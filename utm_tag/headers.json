@@ -1,0 +1,8 @@
+{
+    "accept": "application/json",
+    "content-type": "application/json",
+    "origin": "https://direct.yandex.ru",
+    "referer": "https://direct.yandex.ru/dna/grid/campaigns/?ulogin=e-20035215",
+    "x-csrf-token": "Oa1NsrghZgNRTEr-",  
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 YaBrowser/25.8.0.0 Safari/537.36"
+}

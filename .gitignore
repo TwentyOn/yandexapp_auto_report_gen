@@ -1,5 +1,7 @@
 *__pycache/
 .idea
 
+*.csv
+
 # файлы кэша для docx
 ~$*

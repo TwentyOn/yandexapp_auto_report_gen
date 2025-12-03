@@ -1,0 +1,11 @@
+{
+  "id": "{{app_id}}",
+  "dimensions": "{{dimensions}}",
+  "metrics": "{{metrics}}",
+  "filters": "{{filters}}",
+  "date1": "{{date1}}",
+  "date2": "{{date2}}",
+  "limit": 100000,
+  "accuracy": "full",
+  "include_undefined": "true"
+}
