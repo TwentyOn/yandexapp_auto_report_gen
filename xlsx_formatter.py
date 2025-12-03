@@ -1,5 +1,6 @@
 import io
 import logging
+import string
 
 import numpy as np
 import pandas as pd
@@ -53,7 +54,7 @@ class XlsxForm:
         sheet.write(1, 13, 'Доля сессий с продолжительностью от 10 до 30 секунд', self.header_format)
         sheet.write(1, 14, 'Доля сессий с продолжительностью более 30 секунд', self.header_format)
 
-    def general_writer(self, general_params: pd.DataFrame, sheet_name):
+    def write_general(self, general_params: pd.DataFrame, sheet_name):
         logger.info(f'Записываю лист "{sheet_name}".')
         general_sheet = self.workbook.add_worksheet(sheet_name)
         self._write_campaigns_header(general_sheet)
@@ -64,8 +65,15 @@ class XlsxForm:
             for col, data in enumerate(item):
                 if col == 4:
                     general_sheet.write(row, col, data, self.percent_format)
+                elif col in (12, 13, 14):
+                    general_sheet.write(row, col, data, self.percent_format)
                 else:
                     general_sheet.write(row, col, data)
+
+        # условное форматирование
+        for col in string.ascii_uppercase[2:15]:
+            general_sheet.conditional_format(f"{col}4:{col}{len(general_params) + 2}", {'type': '3_color_scale'})
+
         logger.info('Успех.')
 
     def write_week_distribution(self, installs_sessions_by_week: pd.DataFrame):
@@ -86,7 +94,7 @@ class XlsxForm:
                 distribution_sheet.write(row, col, data)
 
         # добавление графика
-        chart = self.workbook.add_chart({'type': 'scatter', 'subtype': 'smooth_with_markers'})
+        chart = self.workbook.add_chart({"type": "scatter", "subtype": "smooth_with_markers"})
         chart.set_title({
             'name': 'Распределение установок и сессий по неделям',
             'name_font': {
@@ -101,22 +109,27 @@ class XlsxForm:
             'name': f"='Распределение по неделям'!B1",
             'categories': f"='Распределение по неделям'!$A$2:$A${len(installs_sessions_by_week) + 1}",
             'values': f"='Распределение по неделям'!$B$2:$B${len(installs_sessions_by_week) + 1}",
-            'line': {'none': True},
-            'marker': {'type': 'automatic'},
+            'marker': {'type': 'circle'},
         })
         chart.add_series({
             'name': f"='Распределение по неделям'!C1",
             'categories': f"='Распределение по неделям'!$A$2:$A${len(installs_sessions_by_week) + 1}",
             'values': f"='Распределение по неделям'!$C$2:$C${len(installs_sessions_by_week)}",
-            'line': {'none': True},
-            'marker': {'type': 'automatic'},
+            'marker': {'type': 'circle'},
         })
 
         distribution_sheet.insert_chart('E2', chart)
 
-        logger.info('*Заглушка* Успех')
+        logger.info('Успех.')
 
-    def event_writter(self, events: pd.DataFrame):
+    def write_retention_by_weeks(self, retention_df: pd.DataFrame = None):
+        logger.info('Записываю лист "Retention-анализ".')
+
+        retention_sheet = self.workbook.add_worksheet('Retention-анализ')
+
+        logger.info('*Заглушка* Успех.')
+
+    def write_events(self, events: pd.DataFrame):
         logger.info('Записываю лист "События".')
         events_sheet = self.workbook.add_worksheet('События')
 
@@ -139,25 +152,24 @@ class XlsxForm:
             events_sheet.write(i, 3, events.iloc[i].event_per_user, self.float_format)
             events_sheet.write(i, 4, events.iloc[i].perc_all_users, self.percent_format)
 
-        events_sheet.conditional_format(f'B2:B{len(events) + 1}', {'type': '3_color_scale'})
-        events_sheet.conditional_format(f'C2:C{len(events) + 1}', {'type': '3_color_scale'})
-        events_sheet.conditional_format(f'D2:D{len(events) + 1}', {'type': '3_color_scale'})
-        events_sheet.conditional_format(f'E2:E{len(events) + 1}', {'type': '3_color_scale'})
+        # условное форматирование
+        for col in string.ascii_uppercase[1:5]:
+            events_sheet.conditional_format(f"{col}2:{col}{len(events) + 1}", {'type': '3_color_scale'})
 
         # events_sheet.autofit(400)
         logger.info('Успех.')
 
-    def installs_by_regions(self, installs__by_regions: pd.DataFrame = None):
+    def write_installs_by_regions(self, installs__by_regions: pd.DataFrame = None):
         logger.info('Записываю лист "Регионы (Установки)"')
         distribution_sheet = self.workbook.add_worksheet('Регионы (Установки)')
-        logger.info('*Заглушка* Успех')
+        logger.info('*Заглушка* Успех.')
 
-    def installs_by_oc(self, installs__by_oc: pd.DataFrame = None):
+    def write_installs_by_oc(self, installs__by_oc: pd.DataFrame = None):
         logger.info('Записываю лист "ОС (Установки)"')
         distribution_sheet = self.workbook.add_worksheet('ОС (Установки)')
         logger.info('*Заглушка* Успех')
 
-    def installs_by_brand(self, installs__by_brand: pd.DataFrame = None):
+    def write_installs_by_brand(self, installs__by_brand: pd.DataFrame = None):
         logger.info('Записываю лист "Марка (Установки)"')
         distribution_sheet = self.workbook.add_worksheet('Марка (Установки)')
         logger.info('*Заглушка* Успех')

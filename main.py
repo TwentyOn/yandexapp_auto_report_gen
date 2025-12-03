@@ -70,16 +70,16 @@ class YandexAppAPI:
         events_count_labels = ['campaign_id', 'events_count']
 
         # запрос данных из API AppMetrica
-        logger.info('Получаю основные параметры.')
+        logger.info('Запрос основных параметров.')
         request_general = self._make_request(general_metrics, general_dimensions, 'ym:ts:urlParameter')
 
-        logger.info('Получаю кол-во запустивших приложение.')
+        logger.info('Запрос количества запустивших приложение.')
         request_active_users = self._make_request(user_metrics, user_dimensions, 'ym:u:profileUrlParameter')
 
-        logger.info('Получаю количество сессий.')
+        logger.info('Запрос количества сессий.')
         request_sessions = self._make_request(session_metrics, session_dimensions, 'ym:ts:urlParameter')
 
-        logger.info('Получаю количество событий.')
+        logger.info('Запрос количества событий.')
         request_events_count = self._make_request(event_count_metrics, event_count_dimensions, 'ym:ts:urlParameter')
 
         # общие показатели кликов, установок, конверсии кликов
@@ -160,7 +160,7 @@ class YandexAppAPI:
 
         # доля сессий продолжительностью меньше 10 секунд
         sessions_time_less_10_df = sessions_df.drop(columns=['session_id', 'sessions']).groupby('campaign_id').apply(
-            lambda x: (x['timespent'] < 10).mean() * 100, include_groups=False).reset_index(name='sessions_lt_10')
+            lambda x: (x['timespent'] < 10).mean(), include_groups=False).reset_index(name='sessions_lt_10')
         summary_session_time_less_10 = sessions_time_less_10_df['campaign_id'] == 'Итого и средние'
         mean_perc_session_less_10 = sessions_time_less_10_df.loc[
             ~summary_session_time_less_10, 'sessions_lt_10'].mean()
@@ -169,7 +169,7 @@ class YandexAppAPI:
 
         # доля сессий продолжительностью больше 10 но меньше 30 секунд
         sessions_time_10_30_df = sessions_df.drop(columns=['session_id', 'sessions']).groupby('campaign_id').apply(
-            lambda x: ((x['timespent'] >= 10) & (x['timespent'] <= 30)).mean() * 100, include_groups=False).reset_index(
+            lambda x: ((x['timespent'] >= 10) & (x['timespent'] <= 30)).mean(), include_groups=False).reset_index(
             name='sessions_10_30')
         summary_session_time_10_30 = sessions_time_10_30_df['campaign_id'] == 'Итого и средние'
         mean_perc_session_10_30 = sessions_time_10_30_df.loc[
@@ -179,7 +179,7 @@ class YandexAppAPI:
 
         # доля сессий продолжительностью больше 30
         sessions_time_gt_30_df = sessions_df.drop(columns=['session_id', 'sessions']).groupby('campaign_id').apply(
-            lambda x: (x['timespent'] > 30).mean() * 100, include_groups=False).reset_index(name='sessions_gt_30')
+            lambda x: (x['timespent'] > 30).mean(), include_groups=False).reset_index(name='sessions_gt_30')
         summary_session_time_gt_30 = sessions_time_gt_30_df['campaign_id'] == 'Итого и средние'
         mean_perc_session_gt_30 = sessions_time_gt_30_df.loc[
             ~summary_session_time_gt_30, 'sessions_gt_30'].mean()
@@ -263,10 +263,10 @@ class YandexAppAPI:
         sessions_metrics = 'ym:s:sessions'
         sessions_dimensions = 'ym:s:dateTime'
 
-        logger.info('Запрос установок, сгруппированных по дате')
+        logger.info('Запрос установок, сгруппированных по дате.')
         installs_request = self._make_request(install_metrics, install_dimensions, 'ym:ts:urlParameter')
 
-        logger.info('Запрос сессий, сгруппированных по дате')
+        logger.info('Запрос сессий, сгруппированных по дате.')
         sessions_request = self._make_request(sessions_metrics, sessions_dimensions, 'ym:ts:urlParameter')
 
         # DataFrame-ы с удаленной строкой итогов (index=0), т.к не требуется при отображении
@@ -289,6 +289,13 @@ class YandexAppAPI:
 
         return result
 
+    def get_retention_by_weeks(self):
+        """
+        Данные по retention за период
+        :return:
+        """
+        pass
+
     def get_events(self) -> pd.DataFrame:
         """
         Получение и обработка данных для листа "События"
@@ -297,7 +304,7 @@ class YandexAppAPI:
         # ДОБАВИТЬ ФИЛЬТРЫ ПО КАМПАНИЯМ (см. постман)
         metrics = 'ym:ce2:allEvents,ym:ce2:devicesWithEvent,ym:ce2:eventsPerDevice,ym:ce2:devicesPercent'
         dimensions = 'ym:ce2:eventLabel'
-        logger.info('Получаю суммарное количество событий.')
+        logger.info('Запрос суммарного количества событий.')
         response = self._make_request(metrics, dimensions, 'ym:ts:urlParameter')
         events_df = pd.read_csv(io.StringIO(response.text))
         labels = ['event', 'count_event', 'users', 'event_per_user', 'perc_all_users']
@@ -351,12 +358,21 @@ CAMPAIGNS = [704011362, 704010325, 704011628, 704011482, 704011760, 704013108, 7
 
 
 def create_report(app_id, date1, date2, campaigns, doc_header: str):
+    """
+    Метод для управления созданием отчёта
+    :param app_id:
+    :param date1:
+    :param date2:
+    :param campaigns:
+    :param doc_header:
+    :return:
+    """
     token = os.getenv('yapp_token')
     api_req = YandexAppAPI(token, app_id, date1, date2, campaigns)
     general = api_req.get_all_campaigns()
     general_groups = api_req.get_campaign_groups(general)
     week_distribution = api_req.get_week_distribution()
-    # events = api_req.get_events()
+    events = api_req.get_events()
 
     with io.BytesIO() as file:
         workbook = xlsxwriter.Workbook(file, options={'in_memory': True})
@@ -366,13 +382,15 @@ def create_report(app_id, date1, date2, campaigns, doc_header: str):
     form_d1 = datetime.strptime(date1, '%Y-%m-%d').date().strftime('%d.%m.%Y')
     form_d2 = datetime.strptime(date2, '%Y-%m-%d').date().strftime('%d.%m.%Y')
 
+    # формирование листов
     xlsx_form = XlsxForm(workbook, f'{doc_header} {form_d1} - {form_d2}')
-    xlsx_form.general_writer(general, sheet_name='Все кампании')
-    xlsx_form.general_writer(general_groups, sheet_name='Группы кампаний')
+    xlsx_form.write_general(general, sheet_name='Все кампании')
+    xlsx_form.write_general(general_groups, sheet_name='Группы кампаний')
     xlsx_form.write_week_distribution(week_distribution)
-    # xlsx_form.event_writter(events)
+    xlsx_form.write_retention_by_weeks()
+    xlsx_form.write_events(events)
 
-    # event_writer(workbook, events)
+    # закрытие и сохранение файла
     workbook.close()
 
 
