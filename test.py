@@ -37,15 +37,17 @@ from datetime import timedelta
 # print(users_df)
 # print(len(users_df))
 
-df = pd.read_csv('installs.csv')
-df.columns = ['datetime', 'installs']
-sessions_df = pd.read_csv('sessions.csv')
-sessions_df.columns = ['datetime', 'sessions']
+installs_df = pd.read_csv('installs.csv')
+installs_info_labels = ['city', 'oc', 'device_type', 'installs']
+installs_df.columns = installs_info_labels
 
-df['datetime'] = pd.to_datetime(df['datetime'], format='%Y-%m-%d %H:%M:%S', errors='coerce')
-sessions_df['datetime'] = pd.to_datetime(df['datetime'], format='%Y-%m-%d %H:%M:%S', errors='coerce')
-df['week_number'] = df['datetime'].dt.isocalendar().week
-sessions_df['week_number'] = sessions_df['datetime'].dt.isocalendar().week
-df = df.drop(columns=['datetime']).groupby('week_number').sum()
-sessions_df = sessions_df.drop(columns=['datetime']).groupby('week_number').sum()
-print(df.merge(on='week_number', how='left', right=sessions_df))
+regions = installs_df.drop(columns=['oc', 'device_type'])
+regions = regions.groupby('city').sum()
+
+oc = installs_df.drop(columns=['city', 'device_type'])
+oc = oc.groupby('oc').sum()
+
+devices = installs_df.drop(columns=['city', 'oc'])
+devices = devices.groupby('device_type').sum().reset_index()
+devices = devices.sort_values(by='installs', ascending=False)
+print(devices)

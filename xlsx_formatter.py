@@ -18,6 +18,7 @@ class XlsxForm:
         self.header_format = workbook.add_format(
             {'bold': True, 'align': 'center', 'text_wrap': True, 'valign': 'vcenter', 'font_size': 11, 'border': 2,
              'bg_color': '#B0E0E6'})
+        self.text_format = workbook.add_format({'align': 'center', 'text_wrap': True, 'border': 1})
         self.number_format = workbook.add_format({'num_format': '#,##0', 'align': 'center', 'border': 1})
         self.float_format = workbook.add_format({'num_format': '0.00', 'align': 'center', 'border': 1})
         self.percent_format = workbook.add_format({'num_format': '0.00%', 'align': 'center', 'border': 1})
@@ -114,7 +115,7 @@ class XlsxForm:
         chart.add_series({
             'name': f"='Распределение по неделям'!C1",
             'categories': f"='Распределение по неделям'!$A$2:$A${len(installs_sessions_by_week) + 1}",
-            'values': f"='Распределение по неделям'!$C$2:$C${len(installs_sessions_by_week)}",
+            'values': f"='Распределение по неделям'!$C$2:$C${len(installs_sessions_by_week) + 1}",
             'marker': {'type': 'circle'},
         })
 
@@ -122,12 +123,59 @@ class XlsxForm:
 
         logger.info('Успех.')
 
-    def write_retention_by_weeks(self, retention_df: pd.DataFrame = None):
+    def write_retention_by_weeks(self, retention_df: pd.DataFrame):
         logger.info('Записываю лист "Retention-анализ".')
 
-        retention_sheet = self.workbook.add_worksheet('Retention-анализ')
+        cols_count = len(retention_df.iloc[0])
 
-        logger.info('*Заглушка* Успех.')
+        retention_sheet = self.workbook.add_worksheet('Retention-анализ')
+        retention_sheet.set_column(f'A:{string.ascii_uppercase[cols_count]}', 16)
+        retention_sheet.set_row(0, 60)
+
+        # количество недель в датафрейме
+        weeks_count = cols_count - 2
+
+        # заголовки для листа
+        headers = ['Номер кампании', 'Количество установок']
+        headers.extend([f'Retention {str(i + 1)} недели' for i in range(weeks_count)])
+
+        # запись заголовка
+        for i, header in enumerate(headers):
+            retention_sheet.write(0, i, header, self.header_format)
+
+        # запись данных
+        for row, i in enumerate(range(len(retention_df)), start=1):
+            item = retention_df.iloc[i]
+            for col, data in enumerate(item):
+                if col in range(2, cols_count):
+                    # переводим в процентное соотношение, форматируем
+                    retention_sheet.write(row, col, data / 100, self.percent_format)
+                else:
+                    retention_sheet.write(row, col, data, self.number_format)
+
+        # добавление графика
+        chart = self.workbook.add_chart({"type": "scatter", "subtype": "smooth_with_markers"})
+        chart.set_title({
+            'name': 'Распределение retention-rate по кампаниям',
+            'name_font': {
+                'name': 'Calibri',
+            },
+        })
+
+        chart.set_size({'width': 1365, 'height': 500})
+        chart.set_x_axis({"name": "Недели"})
+        chart.set_y_axis({"name": "Retention"})
+        for row_ind, col in enumerate(range(len(retention_df)), start=2):
+            chart.add_series({
+                'name': f"='Retention-анализ'!A{row_ind}",
+                'categories': f"='Retention-анализ'!$C$1:${string.ascii_uppercase[cols_count - 1]}1",
+                'values': f"='Retention-анализ'!$C${row_ind}:${string.ascii_uppercase[cols_count - 1]}${row_ind}",
+                'marker': {'type': 'circle'},
+            })
+
+        retention_sheet.insert_chart(f"B{len(retention_df) + 4}", chart)
+
+    logger.info('*Заглушка* Успех.')
 
     def write_events(self, events: pd.DataFrame):
         logger.info('Записываю лист "События".')
@@ -159,17 +207,90 @@ class XlsxForm:
         # events_sheet.autofit(400)
         logger.info('Успех.')
 
-    def write_installs_by_regions(self, installs__by_regions: pd.DataFrame = None):
+    def write_installs_by_regions(self, installs_info: pd.DataFrame = None):
         logger.info('Записываю лист "Регионы (Установки)"')
-        distribution_sheet = self.workbook.add_worksheet('Регионы (Установки)')
-        logger.info('*Заглушка* Успех.')
+        installs_by_regions_sheet = self.workbook.add_worksheet('Регионы (Установки)')
+        installs_by_regions_sheet.set_column(f'A:A', 25)
+        installs_by_regions_sheet.set_column(f'B:B', 20)
 
-    def write_installs_by_oc(self, installs__by_oc: pd.DataFrame = None):
+        # группируем данные по региону
+        regions = installs_info.drop(columns=['oc', 'device_type'])
+        regions = regions.groupby('city').sum().reset_index()
+        regions = regions.sort_values(by='installs', ascending=False).reset_index(drop=True)
+        regions = regions.drop(index=[0])
+
+        # запись заголовка
+        installs_by_regions_sheet.write(0, 0, 'Город', self.header_format)
+        installs_by_regions_sheet.write(0, 1, 'Количество установок', self.header_format)
+
+        # запись данных
+        for row, i in enumerate(range(len(regions)), start=1):
+            item = regions.iloc[i]
+            for col, data in enumerate(item):
+                if col == 0:
+                    installs_by_regions_sheet.write(row, col, data, self.text_format)
+                else:
+                    installs_by_regions_sheet.write(row, col, data, self.number_format)
+
+        # условное форматирование
+        installs_by_regions_sheet.conditional_format(f'B2:B{len(regions) + 1}', {'type': '3_color_scale'})
+
+        logger.info('Успех.')
+
+    def write_installs_by_oc(self, installs_info: pd.DataFrame):
         logger.info('Записываю лист "ОС (Установки)"')
-        distribution_sheet = self.workbook.add_worksheet('ОС (Установки)')
-        logger.info('*Заглушка* Успех')
+        installs_by_oc_sheet = self.workbook.add_worksheet('ОС (Установки)')
 
-    def write_installs_by_brand(self, installs__by_brand: pd.DataFrame = None):
+        installs_by_oc_sheet.set_column(f'A:A', 25)
+        installs_by_oc_sheet.set_column(f'B:B', 20)
+        # группируем данные по операционной системе
+        oc_df = installs_info.drop(columns=['city', 'device_type'])
+        oc_df = oc_df.groupby('oc').sum().reset_index()
+        oc_df = oc_df.sort_values(by='installs', ascending=False).reset_index(drop=True)
+
+        # запись заголовка
+        installs_by_oc_sheet.write(0, 0, 'Операционная система', self.header_format)
+        installs_by_oc_sheet.write(0, 1, 'Количество установок', self.header_format)
+
+        # запись данных
+        for row, i in enumerate(range(len(oc_df)), start=1):
+            item = oc_df.iloc[i]
+            for col, data in enumerate(item):
+                if col == 0:
+                    installs_by_oc_sheet.write(row, col, data, self.text_format)
+                else:
+                    installs_by_oc_sheet.write(row, col, data, self.number_format)
+
+        # условное форматирование
+        installs_by_oc_sheet.conditional_format(f'B2:B{len(oc_df) + 1}', {'type': '3_color_scale'})
+
+        logger.info('Успех.')
+
+    def write_installs_by_brand(self, installs_info: pd.DataFrame):
         logger.info('Записываю лист "Марка (Установки)"')
-        distribution_sheet = self.workbook.add_worksheet('Марка (Установки)')
-        logger.info('*Заглушка* Успех')
+        installs_by_brand_sheet = self.workbook.add_worksheet('Марка (Установки)')
+
+        installs_by_brand_sheet.set_column(f'A:A', 25)
+        installs_by_brand_sheet.set_column(f'B:B', 20)
+        # группируем данные по операционной системе
+        oc_df = installs_info.drop(columns=['city', 'oc'])
+        oc_df = oc_df.groupby('device_type').sum().reset_index()
+        oc_df = oc_df.sort_values(by='installs', ascending=False).reset_index(drop=True)
+
+        # запись заголовка
+        installs_by_brand_sheet.write(0, 0, 'Бренд устройства', self.header_format)
+        installs_by_brand_sheet.write(0, 1, 'Количество установок', self.header_format)
+
+        # запись данных
+        for row, i in enumerate(range(len(oc_df)), start=1):
+            item = oc_df.iloc[i]
+            for col, data in enumerate(item):
+                if col == 0:
+                    installs_by_brand_sheet.write(row, col, data, self.text_format)
+                else:
+                    installs_by_brand_sheet.write(row, col, data, self.number_format)
+
+        # условное форматирование
+        installs_by_brand_sheet.conditional_format(f'B2:B{len(oc_df) + 1}', {'type': '3_color_scale'})
+
+        logger.info('Успех.')

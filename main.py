@@ -42,8 +42,13 @@ class YandexAppAPI:
         self.api_url = 'https://api.appmetrica.yandex.ru/stat/v1/data.csv'
         self.header = {'Authorization': yapp_token}
         self.app_id = app_id
-        self.date1 = date1
-        self.date2 = date2
+
+        self.date1_repr = date1
+        self.date2_repr = date2
+        # перевод строкового значения даты в python-объект date для вычислений
+        self.date1 = datetime.strptime(date1, '%Y-%m-%d').date()
+        self.date2 = datetime.strptime(date2, '%Y-%m-%d').date()
+
         self.campaign_ids = campaign_ids
         self.campaign_group_ids = campaign_groups
 
@@ -294,7 +299,35 @@ class YandexAppAPI:
         Данные по retention за период
         :return:
         """
-        pass
+        # ДОЛЖЕН ПРИХОДИТЬ СО СКРИПТА СТЁПЫ
+        # параметр, в котором хранится номер кампании в Yandex App Metrica
+        campaign_id_param = 'utm_campaign'
+
+        # целое количество недель в периоде
+        weeks_num = int((self.date2 - self.date1).days / 7)
+
+        # отдельный url api-запрос для получения retention
+        api_url = 'https://api.appmetrica.yandex.ru/v2/user/acquisition.csv'
+
+        # метрика retention
+        metric = r'retentionWeek{{week_num}}Percentage'
+        # группировка по кампаниям
+        dimension = fr"urlParameter{{'{campaign_id_param}'}}"
+
+        # метрики для запроса
+        metrics = f','.join([metric.replace('{{week_num}}', str(_)) for _ in range(1, weeks_num + 1)])
+
+        logger.info(f'Запрашиваю retention-rate за {weeks_num} недель.')
+        retention_request = self._make_request(metrics, dimension, "ym:ts:urlParameter", url=api_url)
+
+        retention_df = pd.read_csv(io.StringIO(retention_request.text))
+        # удаление строки итогов
+        retention_df = retention_df.drop(index=[0]).reset_index(drop=True)
+        labels = retention_df.columns.tolist()
+        labels[0] = 'campaign_id'
+        retention_df.columns = labels
+
+        return retention_df
 
     def get_events(self) -> pd.DataFrame:
         """
@@ -304,15 +337,31 @@ class YandexAppAPI:
         # ДОБАВИТЬ ФИЛЬТРЫ ПО КАМПАНИЯМ (см. постман)
         metrics = 'ym:ce2:allEvents,ym:ce2:devicesWithEvent,ym:ce2:eventsPerDevice,ym:ce2:devicesPercent'
         dimensions = 'ym:ce2:eventLabel'
+
         logger.info('Запрос суммарного количества событий.')
         response = self._make_request(metrics, dimensions, 'ym:ts:urlParameter')
+
         events_df = pd.read_csv(io.StringIO(response.text))
         labels = ['event', 'count_event', 'users', 'event_per_user', 'perc_all_users']
         events_df.columns = labels
+
         return events_df
 
+    def get_installs_info(self):
+        metrics = 'ym:i:advInstallDevices'
+        dimensions = 'ym:i:regionCity,ym:i:operatingSystem,ym:i:mobileDeviceModel'
+
+        logger.info('Запрос данных по установкам (регион, ОС, марка).')
+        installs_info_request = self._make_request(metrics, dimensions, 'ym:ts:urlParameter')
+
+        installs_info_df = pd.read_csv(io.StringIO(installs_info_request.text))
+        installs_info_labels = ['city', 'oc', 'device_type', 'installs']
+        installs_info_df.columns = installs_info_labels
+
+        return installs_info_df
+
     @status_decorator
-    def _make_request(self, metrics: str, dimensions: str, filter_label: str) -> requests.Response:
+    def _make_request(self, metrics: str, dimensions: str, filter_label: str, url: str = None) -> requests.Response:
         """
         Выполнение запроса к App Metrica
         :param metrics:
@@ -321,6 +370,11 @@ class YandexAppAPI:
         :return:
         """
         parameters = self._get_parameters(metrics, dimensions, filter_label)
+
+        if url:
+            request = requests.get(url, headers=self.header, params=parameters)
+            return request
+
         request = requests.get(self.api_url, headers=self.header, params=parameters)
         return request
 
@@ -344,8 +398,8 @@ class YandexAppAPI:
         data = data.replace('{{metrics}}', metrics)
         data = data.replace('{{dimensions}}', dimensions)
         data = data.replace('{{filters}}', filters)
-        data = data.replace('{{date1}}', self.date1)
-        data = data.replace('{{date2}}', self.date2)
+        data = data.replace('{{date1}}', self.date1_repr)
+        data = data.replace('{{date2}}', self.date2_repr)
         data = json.loads(data)
         return data
 
@@ -372,8 +426,18 @@ def create_report(app_id, date1, date2, campaigns, doc_header: str):
     general = api_req.get_all_campaigns()
     general_groups = api_req.get_campaign_groups(general)
     week_distribution = api_req.get_week_distribution()
+    retention = api_req.get_retention_by_weeks()
     events = api_req.get_events()
+    installs_info = api_req.get_installs_info()
 
+    # добавление в retention DataFrame поля с установками
+    retention = retention.merge(general[['campaign_id', 'installs']], on='campaign_id', how='left')
+    labels = retention.columns.tolist()
+    # делаем колонку с кол-вом установок второй по счёту
+    labels.insert(1, labels.pop(-1))
+    retention = retention[labels]
+
+    # создание файла в оперативной памяти
     with io.BytesIO() as file:
         workbook = xlsxwriter.Workbook(file, options={'in_memory': True})
         workbook.filename = 'yapp_report.xlsx'
@@ -387,8 +451,11 @@ def create_report(app_id, date1, date2, campaigns, doc_header: str):
     xlsx_form.write_general(general, sheet_name='Все кампании')
     xlsx_form.write_general(general_groups, sheet_name='Группы кампаний')
     xlsx_form.write_week_distribution(week_distribution)
-    xlsx_form.write_retention_by_weeks()
+    xlsx_form.write_retention_by_weeks(retention)
     xlsx_form.write_events(events)
+    xlsx_form.write_installs_by_regions(installs_info)
+    xlsx_form.write_installs_by_oc(installs_info)
+    xlsx_form.write_installs_by_brand(installs_info)
 
     # закрытие и сохранение файла
     workbook.close()
