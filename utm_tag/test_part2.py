@@ -31,6 +31,7 @@ client = Minio(
     secure=False
 )
 
+
 def load_cookies_from_minio(bucket_name=S3_BUCKET_NAME, object_name="cookies_for_campaigns/user_1_cookies.json"):
     response = client.get_object(bucket_name, object_name)
     data = response.read().decode("utf-8")
@@ -38,22 +39,26 @@ def load_cookies_from_minio(bucket_name=S3_BUCKET_NAME, object_name="cookies_for
     response.release_conn()
     return json.loads(data)
 
+
 def update_headers_with_csrf(headers: dict, cookies: dict) -> dict:
     csrf_token = cookies.get("_direct_csrf_token")
     if csrf_token:
         headers["x-csrf-token"] = csrf_token
     return headers
 
+
 def _chunked(it: Iterable, n: int):
     it = list(it)
     for i in range(0, len(it), n):
-        yield it[i:i+n]
+        yield it[i:i + n]
+
 
 def _ensure_bearer(token: Optional[str]) -> str:
     token = token.strip()
     if not token.lower().startswith("bearer "):
         return "Bearer " + token
     return token
+
 
 def recursive_find_tracking(obj) -> Optional[str]:
     if obj is None:
@@ -73,8 +78,10 @@ def recursive_find_tracking(obj) -> Optional[str]:
                 return found
     return None
 
+
 def collect_campaigns_with_tracking(data) -> Dict[str, str]:
     found = {}
+
     def walk(x):
         if isinstance(x, dict):
             cid = x.get("Id") or x.get("id")
@@ -87,8 +94,10 @@ def collect_campaigns_with_tracking(data) -> Dict[str, str]:
         elif isinstance(x, list):
             for el in x:
                 walk(el)
+
     walk(data)
     return found
+
 
 def direct_api_get_tracking_params(campaign_ids: List[str]) -> Dict[str, str]:
     token = _ensure_bearer(YANDEX_DIRECT_TOKEN)
@@ -116,6 +125,7 @@ def direct_api_get_tracking_params(campaign_ids: List[str]) -> Dict[str, str]:
         found.update(collect_campaigns_with_tracking(j))
     return found
 
+
 def get_tracking_params_web(campaign_id: str, cookies, headers):
     params = {
         "query[ulogin]": "e-20035215",
@@ -125,8 +135,10 @@ def get_tracking_params_web(campaign_id: str, cookies, headers):
     }
     r = requests.get(YANDEX_WEBAPI_URL, headers=headers, cookies=cookies, params=params)
     data = r.json()
-    Path(f"campaign_{campaign_id}_raw.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(f"campaign_{campaign_id}_raw.json").write_text(json.dumps(data, ensure_ascii=False, indent=2),
+                                                        encoding="utf-8")
     return recursive_find_tracking(data)
+
 
 def get_tracking_from_banner(campaign_id: str) -> Optional[str]:
     token = _ensure_bearer(YANDEX_DIRECT_TOKEN)
@@ -152,7 +164,8 @@ def get_tracking_from_banner(campaign_id: str) -> Optional[str]:
         return None
 
     j = r.json()
-    Path(f"campaigns_ads_{campaign_id}_raw.json").write_text(json.dumps(j, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(f"campaigns_ads_{campaign_id}_raw.json").write_text(json.dumps(j, ensure_ascii=False, indent=2),
+                                                             encoding="utf-8")
 
     ads = j.get("result", {}).get("Ads", [])
     for ad in ads:
@@ -161,7 +174,10 @@ def get_tracking_from_banner(campaign_id: str) -> Optional[str]:
             query = urlparse(href).query or href.split("?", 1)[-1]
             return query
     return None
+
+
 import glob
+
 
 def cleanup_temp_json_files():
     patterns = ["campaign_*.json", "campaigns_ads_*.json"]
@@ -178,9 +194,11 @@ def cleanup_temp_json_files():
     else:
         logger.info("Временные JSON-файлы отсутствуют — нечего удалять.")
 
+
 def get_campaign_params(campaign_ids: List[str]) -> Dict[str, Optional[str]]:
+    cur_dir_path = os.path.dirname(__file__)
     cookies = load_cookies_from_minio()
-    headers = json.load(open("headers.json", encoding="utf-8"))
+    headers = json.load(open(os.path.join(cur_dir_path, "headers.json"), encoding="utf-8"))
     headers = update_headers_with_csrf(headers, cookies)
 
     result = {}
@@ -202,5 +220,5 @@ def get_campaign_params(campaign_ids: List[str]) -> Dict[str, Optional[str]]:
 
 
 if __name__ == "__main__":
-    # print(get_campaign_params(["703986845", "703723040", "702469969", " 702468674", "702470368", "702496972", "702498562"]))
-    print(get_campaign_params(['704010325']))
+    print(get_campaign_params(["703986845", "703723040", "702469969", " 702468674", "702470368", "702496972", "702498562"]))
+    # print(get_campaign_params(["704010325"]))
