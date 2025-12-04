@@ -212,6 +212,7 @@ class XlsxForm:
         installs_by_regions_sheet = self.workbook.add_worksheet('Регионы (Установки)')
         installs_by_regions_sheet.set_column(f'A:A', 25)
         installs_by_regions_sheet.set_column(f'B:B', 20)
+        installs_by_regions_sheet.set_row(0, 60)
 
         # группируем данные по региону
         regions = installs_info.drop(columns=['oc', 'device_type'])
@@ -243,6 +244,8 @@ class XlsxForm:
 
         installs_by_oc_sheet.set_column(f'A:A', 25)
         installs_by_oc_sheet.set_column(f'B:B', 20)
+        installs_by_oc_sheet.set_row(0, 60)
+
         # группируем данные по операционной системе
         oc_df = installs_info.drop(columns=['city', 'device_type'])
         oc_df = oc_df.groupby('oc').sum().reset_index()
@@ -272,6 +275,8 @@ class XlsxForm:
 
         installs_by_brand_sheet.set_column(f'A:A', 25)
         installs_by_brand_sheet.set_column(f'B:B', 20)
+        installs_by_brand_sheet.set_row(0, 60)
+
         # группируем данные по операционной системе
         oc_df = installs_info.drop(columns=['city', 'oc'])
         oc_df = oc_df.groupby('device_type').sum().reset_index()
