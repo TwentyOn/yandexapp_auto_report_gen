@@ -34,6 +34,7 @@ class XlsxForm:
         sheet.set_column('A:A', 16)
         sheet.set_column('B:B', 60)
         sheet.set_column('C:O', 16)
+        sheet.set_row(0, 20)
         sheet.set_row(1, 60)
 
         # запись заголовка листа
