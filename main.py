@@ -130,6 +130,7 @@ class YandexAppAPI:
         log_count_df['active_users'] = np.where(log_count_df['events_count'] > 0, 1, 0)
         log_count_df = log_count_df.drop(columns='events_count')
         log_count_df = log_count_df.groupby('campaign_id').sum().reset_index()
+        log_count_df.loc[-1] = ['Итого и средние', log_count_df['active_users'].sum()]
 
         # количество сессии, время сессий
         sessions_df = pd.read_csv(io.StringIO(request_sessions.text)).fillna(0)
