@@ -258,6 +258,7 @@ class XlsxForm:
         oc_df = installs_info.drop(columns=['city', 'device_type'])
         oc_df = oc_df.groupby('oc').sum().reset_index()
         oc_df = oc_df.sort_values(by='installs', ascending=False).reset_index(drop=True)
+        oc_df = oc_df.drop(index=[0])
 
         # запись заголовка
         installs_by_oc_sheet.write(0, 0, 'Операционная система', self.header_format)
@@ -286,17 +287,18 @@ class XlsxForm:
         installs_by_brand_sheet.set_row(0, 60)
 
         # группируем данные по операционной системе
-        oc_df = installs_info.drop(columns=['city', 'oc'])
-        oc_df = oc_df.groupby('device_type').sum().reset_index()
-        oc_df = oc_df.sort_values(by='installs', ascending=False).reset_index(drop=True)
+        brand_df = installs_info.drop(columns=['city', 'oc'])
+        brand_df = brand_df.groupby('device_type').sum().reset_index()
+        brand_df = brand_df.sort_values(by='installs', ascending=False).reset_index(drop=True)
+        brand_df = brand_df.drop(index=[0])
 
         # запись заголовка
         installs_by_brand_sheet.write(0, 0, 'Бренд устройства', self.header_format)
         installs_by_brand_sheet.write(0, 1, 'Количество установок', self.header_format)
 
         # запись данных
-        for row, i in enumerate(range(len(oc_df)), start=1):
-            item = oc_df.iloc[i]
+        for row, i in enumerate(range(len(brand_df)), start=1):
+            item = brand_df.iloc[i]
             for col, data in enumerate(item):
                 if col == 0:
                     installs_by_brand_sheet.write(row, col, data, self.text_format)
@@ -304,6 +306,6 @@ class XlsxForm:
                     installs_by_brand_sheet.write(row, col, data, self.number_format)
 
         # условное форматирование
-        installs_by_brand_sheet.conditional_format(f'B2:B{len(oc_df) + 1}', {'type': '3_color_scale'})
+        installs_by_brand_sheet.conditional_format(f'B2:B{len(brand_df) + 1}', {'type': '3_color_scale'})
 
         logger.info('Успех.')

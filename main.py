@@ -494,4 +494,4 @@ def create_report(app_id, date1, date2, campaigns, doc_header: str):
     workbook.close()
 
 
-create_report('2777872', '2025-10-1', '2025-11-30', CAMPAIGNS, 'Отчёт по кампании "Кампания"')
+create_report('2777872', '2025-11-1', '2025-11-30', CAMPAIGNS, 'Отчёт - приложение "Узнай Москву"')
