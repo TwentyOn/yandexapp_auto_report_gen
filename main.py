@@ -167,8 +167,7 @@ class YandexAppAPI:
         sessions_time_less_10_df = sessions_df.drop(columns=['session_id', 'sessions']).groupby('campaign_id').apply(
             lambda x: (x['timespent'] < 10).mean(), include_groups=False).reset_index(name='sessions_lt_10')
         summary_session_time_less_10 = sessions_time_less_10_df['campaign_id'] == 'Итого и средние'
-        mean_perc_session_less_10 = sessions_time_less_10_df.loc[
-            ~summary_session_time_less_10, 'sessions_lt_10'].mean()
+        mean_perc_session_less_10 = sessions_time_less_10_df.loc[~summary_session_time_less_10, 'sessions_lt_10'].mean()
         sessions_time_less_10_df.loc[summary_session_time_less_10, 'sessions_lt_10'] = mean_perc_session_less_10
         general_df = general_df.merge(on='campaign_id', how='left', right=sessions_time_less_10_df)
 
@@ -177,8 +176,7 @@ class YandexAppAPI:
             lambda x: ((x['timespent'] >= 10) & (x['timespent'] <= 30)).mean(), include_groups=False).reset_index(
             name='sessions_10_30')
         summary_session_time_10_30 = sessions_time_10_30_df['campaign_id'] == 'Итого и средние'
-        mean_perc_session_10_30 = sessions_time_10_30_df.loc[
-            ~summary_session_time_10_30, 'sessions_10_30'].mean()
+        mean_perc_session_10_30 = sessions_time_10_30_df.loc[~summary_session_time_10_30, 'sessions_10_30'].mean()
         sessions_time_10_30_df.loc[summary_session_time_10_30, 'sessions_10_30'] = mean_perc_session_10_30
         general_df = general_df.merge(on='campaign_id', how='left', right=sessions_time_10_30_df)
 
@@ -186,8 +184,7 @@ class YandexAppAPI:
         sessions_time_gt_30_df = sessions_df.drop(columns=['session_id', 'sessions']).groupby('campaign_id').apply(
             lambda x: (x['timespent'] > 30).mean(), include_groups=False).reset_index(name='sessions_gt_30')
         summary_session_time_gt_30 = sessions_time_gt_30_df['campaign_id'] == 'Итого и средние'
-        mean_perc_session_gt_30 = sessions_time_gt_30_df.loc[
-            ~summary_session_time_gt_30, 'sessions_gt_30'].mean()
+        mean_perc_session_gt_30 = sessions_time_gt_30_df.loc[~summary_session_time_gt_30, 'sessions_gt_30'].mean()
         sessions_time_gt_30_df.loc[summary_session_time_gt_30, 'sessions_gt_30'] = mean_perc_session_gt_30
         general_df = general_df.merge(on='campaign_id', how='left', right=sessions_time_gt_30_df)
 

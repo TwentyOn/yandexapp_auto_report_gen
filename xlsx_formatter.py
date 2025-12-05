@@ -18,11 +18,13 @@ class XlsxForm:
         self.header_format = workbook.add_format(
             {'bold': True, 'align': 'center', 'text_wrap': True, 'valign': 'vcenter', 'font_size': 11, 'border': 2,
              'bg_color': '#B0E0E6'})
-        self.text_format = workbook.add_format({'align': 'center', 'text_wrap': True, 'border': 1})
-        self.number_format = workbook.add_format({'num_format': '#,##0', 'align': 'center', 'border': 1})
-        self.float_format = workbook.add_format({'num_format': '0.00', 'align': 'center', 'border': 1})
-        self.percent_format = workbook.add_format({'num_format': '0.00%', 'align': 'center', 'border': 1})
-        self.event_format = workbook.add_format({'align': 'left', 'border': 1})
+        self.text_format = workbook.add_format({'align': 'left', 'valign': 'vcenter', 'text_wrap': True, 'border': 1})
+        self.number_format = workbook.add_format({'num_format': '#,##0', 'align': 'center', 'valign': 'vcenter',
+                                                  'border': 1})
+        self.float_format = workbook.add_format({'num_format': '0.00', 'align': 'center', 'valign': 'vcenter',
+                                                 'border': 1})
+        self.percent_format = workbook.add_format({'num_format': '0.00%', 'align': 'center', 'valign': 'vcenter',
+                                                   'border': 1})
 
     def _write_campaigns_header(self, sheet: Worksheet):
         """
@@ -35,7 +37,7 @@ class XlsxForm:
         sheet.set_column('B:B', 60)
         sheet.set_column('C:O', 16)
         sheet.set_row(0, 20)
-        sheet.set_row(1, 60)
+        sheet.set_row(1, 75)
 
         # запись заголовка листа
         sheet.write(1, 0, 'Номер кампании', self.header_format)
@@ -65,12 +67,17 @@ class XlsxForm:
         for row, i in enumerate(range(len(general_params)), start=2):
             item = general_params.iloc[i]
             for col, data in enumerate(item):
-                if col == 4:
-                    general_sheet.write(row, col, data, self.percent_format)
-                elif col in (12, 13, 14):
-                    general_sheet.write(row, col, data, self.percent_format)
+                # определение формата ячейки
+                if col in (0, 1):
+                    cur_format = self.text_format
+                elif col in (2, 3, 5, 6, 8):
+                    cur_format = self.number_format
+                elif col in (4, 12, 13, 14):
+                    cur_format = self.percent_format
                 else:
-                    general_sheet.write(row, col, data)
+                    cur_format = self.float_format
+
+                general_sheet.write(row, col, data, cur_format)
 
         # условное форматирование
         for col in string.ascii_uppercase[2:15]:
@@ -93,7 +100,7 @@ class XlsxForm:
         for row, i in enumerate(range(len(installs_sessions_by_week)), start=1):
             item = installs_sessions_by_week.iloc[i]
             for col, data in enumerate(item):
-                distribution_sheet.write(row, col, data)
+                distribution_sheet.write(row, col, data, self.number_format)
 
         # добавление графика
         chart = self.workbook.add_chart({"type": "scatter", "subtype": "smooth_with_markers"})
@@ -176,7 +183,7 @@ class XlsxForm:
 
         retention_sheet.insert_chart(f"B{len(retention_df) + 4}", chart)
 
-    logger.info('*Заглушка* Успех.')
+        logger.info('Успех.')
 
     def write_events(self, events: pd.DataFrame):
         logger.info('Записываю лист "События".')
@@ -195,7 +202,7 @@ class XlsxForm:
 
         events.sort_values('count_event', inplace=True, ascending=False)
         for i in range(1, len(events)):
-            events_sheet.write(i, 0, events.iloc[i].event, self.event_format)
+            events_sheet.write(i, 0, events.iloc[i].event, self.text_format)
             events_sheet.write(i, 1, events.iloc[i].count_event, self.number_format)
             events_sheet.write(i, 2, events.iloc[i].users, self.number_format)
             events_sheet.write(i, 3, events.iloc[i].event_per_user, self.float_format)
