@@ -22,6 +22,11 @@ logger = logging.getLogger('main.py')
 
 
 def status_decorator(func):
+    """
+    Декоратор для подсчёта времени на запрос и информировании об успешности запроса
+    :param func:
+    :return:
+    """
     @wraps(func)
     def wrapper(*args, **kwargs):
         start_time = perf_counter()
@@ -36,6 +41,12 @@ def status_decorator(func):
 
 
 def fillna_decorator(func):
+    """
+    Декоратор для заполнения nan-значений на 0 в результирующих объектах DataFrame
+    (Только для функций возвращающих объекты pd.DataFrame)
+    :param func:
+    :return:
+    """
     @wraps(func)
     def wrapper(*args, **kwargs):
         result = func(*args, **kwargs)
