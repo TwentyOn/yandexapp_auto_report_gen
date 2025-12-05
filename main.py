@@ -20,7 +20,6 @@ dotenv.load_dotenv()
 logging.basicConfig(level=logging.INFO, format='[{asctime}] #{levelname:4} {name}:{lineno} - {message}', style='{')
 logger = logging.getLogger('main.py')
 
-
 def status_decorator(func):
     """
     Декоратор для подсчёта времени на запрос и информировании об успешности запроса
@@ -35,6 +34,7 @@ def status_decorator(func):
             logger.info(f'Запрос успешен! ({round(perf_counter() - start_time, 3)} cек)')
         else:
             logger.error('Ошибка запроса!')
+            print(result.url)
         return result
 
     return wrapper
@@ -82,9 +82,6 @@ class YandexAppAPI:
         general_metrics = 'ym:ts:userClicks,ym:ts:advInstallDevices,ym:ts:clickToInstallConversion'
         general_dimensions = "ym:ts:urlParameter{'utm_campaign'}"
 
-        user_metrics = 'ym:u:newUsers'
-        user_dimensions = "ym:u:profileUrlParameter{'utm_campaign'}"
-
         session_metrics = 'ym:s:sessions,ym:s:totalSessionDurationPerUser'
         session_dimensions = "ym:s:profileUrlParameter{'utm_campaign'},ym:s:session"
 
@@ -92,7 +89,6 @@ class YandexAppAPI:
         event_count_dimensions = "ym:ce2:profileUrlParameter{'utm_campaign'},ym:ce2:device,ym:ce2:eventLabel"
 
         general_labels = ['campaign_id', 'clicks', 'installs', 'conversion_clicks']
-        new_users_labels = ['campaign_id', 'active_users']
         session_labels = ['campaign_id', 'session_id', 'sessions', 'timespent']
         events_count_labels = ['campaign_id', 'device_id', 'event', 'events_count']
 
@@ -143,14 +139,15 @@ class YandexAppAPI:
                                                             'Узнай Москву/РСЯ/Достопримечательности, выставки, музеи/iOS (РФ)',
                                                             'Узнай Москву/РСЯ/Достопримечательности в AR/iOS',
                                                             'Узнай Москву/РСЯ/Двойники в AR/iOS',
-                                                            'Узнай Москву/РСЯ/Выходные/iOS',
+                                                            'Узнай Москву/РСЯ/Выходные/iOS,',
                                                             'Узнай Москву/Поиск/Экспозиции, выставки, музеи/iOS',
                                                             'Узнай Москву/Поиск/Экскурсии/iOS (РФ)',
                                                             'Узнай Москву/Поиск/Парки, усадьбы/iOS',
                                                             'Узнай Москву/Поиск/Достопримечательности/iOS (РФ)',
                                                             'Узнай Москву/Поиск/Достопримечательности в AR/iOS',
                                                             'Узнай Москву/Поиск/Двойники в AR/iOS',
-                                                            'Узнай Москву/Поиск/Выходные/IOS'])
+                                                            'Узнай Москву/Поиск/Выходные/IOS'
+                                                            ])
 
         # Формирование результирующего датафрейма (со всеми параметрами)
         # добавление столбца с количеством новых пользователей
@@ -158,22 +155,21 @@ class YandexAppAPI:
 
         # добавление столбца с количеством сессий
         # отсутствующие в ответе API кампании заполняем как кампании с 0-м показателем сессий
-        check = [i for i in self.campaign_ids if str(i) not in sessions_df.campaign_id.values]
+        check = [str(i) for i in self.campaign_ids if str(i) not in sessions_df.campaign_id.values]
         if check:
             for campaign_id in check:
                 sessions_df.loc[len(sessions_df)] = [campaign_id, 0, 0, 0]
 
-        # группируем сессии по campaign_id с суммированием показателей
-        general_df = general_df.merge(on='campaign_id', how='left',
-                                      right=sessions_df.drop(columns=['session_id', 'timespent']).groupby(
-                                          'campaign_id').sum())
+        # общие показатели количества сессий
+        sessions_count_df = sessions_df.drop(columns=['session_id', 'timespent']).groupby('campaign_id').sum()
+        general_df = general_df.merge(on='campaign_id', how='left', right=sessions_count_df)
 
         # столбец с количеством сессий на 1 установку
-        general_df['session_per_install'] = np.where(general_df['sessions'] != 0,
+        general_df['session_per_install'] = np.where((general_df['sessions'] != 0) & (general_df['installs'] != 0),
                                                      (general_df['sessions'] / general_df['installs']).round(2), 0)
 
         # добавление столбца с количеством событий
-        general_df = general_df.merge(on='campaign_id', how='left', right=total_events_df)
+        general_df = general_df.merge(on='campaign_id', how='left', right=total_events_df).fillna(0)
 
         # столбец с количеством событий на 1 сессию
         general_df['events_per_session'] = np.where(general_df['sessions'] != 0,
@@ -494,5 +490,6 @@ def create_report(app_id, date1, date2, campaigns, doc_header: str):
     # закрытие и сохранение файла
     workbook.close()
 
-
+# НЕОБХОДИМО ДОБАВИТЬ ВО ВСЕ ДАТАФРЕЙМЫ ПРОВЕРКУ НА ПОЛУЧАЕМЫЕ ИЗ МЕТРИКИ ДАННЫЕ, ЕСЛИ ИЗ МЕТРИКИ НИЧЕГО НЕ ВЕРНУЛОСЬ В DATAFRAME
+# ДОЛЖНЫ БЫТЬ ВСЕ!!! КАМПАНИИ С 0 ПАРАМЕТРАМИ
 create_report('2777872', '2025-11-1', '2025-11-30', CAMPAIGNS, 'Отчёт - приложение "Узнай Москву"')
