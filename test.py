@@ -38,16 +38,21 @@ from datetime import timedelta
 # print(len(users_df))
 
 installs_df = pd.read_csv('installs.csv')
-installs_info_labels = ['city', 'oc', 'device_type', 'installs']
-installs_df.columns = installs_info_labels
+installs_df.columns = ['device_id', 'installs']
+device_ids = installs_df.drop_duplicates('device_id', keep='first')['device_id'].tolist()
 
-regions = installs_df.drop(columns=['oc', 'device_type'])
-regions = regions.groupby('city').sum()
+events_df = pd.read_csv('events.csv')
+events_df.columns = ['campaign_id', 'device_id', 'event', 'login_count']
 
-oc = installs_df.drop(columns=['city', 'device_type'])
-oc = oc.groupby('oc').sum()
+total_events_df = events_df.copy()
+total_events_df = total_events_df.drop(columns=['event', 'device_id'])
+total_events_df = total_events_df.groupby('campaign_id').sum().reset_index()
+total_events_df = total_events_df.sort_values(by='login_count', ascending=False)
 
-devices = installs_df.drop(columns=['city', 'oc'])
-devices = devices.groupby('device_type').sum().reset_index()
-devices = devices.sort_values(by='installs', ascending=False)
-print(devices)
+log_count_df = events_df.copy()
+log_count_df = log_count_df[log_count_df['event'] == 'Запуск приложения и отображение экрана заставки.']
+log_count_df = log_count_df.drop(columns=['device_id', 'event'])
+log_count_df['login_count'] = np.where(log_count_df['login_count'] > 0, 1, 0)
+log_count_df = log_count_df.groupby('campaign_id').sum().reset_index()
+
+print(log_count_df)

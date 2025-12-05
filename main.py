@@ -35,6 +35,16 @@ def status_decorator(func):
     return wrapper
 
 
+def fillna_decorator(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        result = func(*args, **kwargs)
+        result = result.fillna(0)
+        return result
+
+    return wrapper
+
+
 class YandexAppAPI:
     def __init__(self, yapp_token, app_id=None, date1=None, date2=None, campaign_ids: list = None,
                  campaign_groups: list = None):
@@ -52,6 +62,7 @@ class YandexAppAPI:
         self.campaign_ids = campaign_ids
         self.campaign_group_ids = campaign_groups
 
+    @fillna_decorator
     def get_all_campaigns(self) -> pd.DataFrame:
         """
         Данные (сбор и обработка) для листа "Все кампании"
@@ -67,19 +78,16 @@ class YandexAppAPI:
         session_dimensions = "ym:s:profileUrlParameter{'utm_campaign'},ym:s:session"
 
         event_count_metrics = 'ym:ce2:allEvents'
-        event_count_dimensions = "ym:ce2:profileUrlParameter{'utm_campaign'}"
+        event_count_dimensions = "ym:ce2:profileUrlParameter{'utm_campaign'},ym:ce2:device,ym:ce2:eventLabel"
 
         general_labels = ['campaign_id', 'clicks', 'installs', 'conversion_clicks']
         new_users_labels = ['campaign_id', 'active_users']
         session_labels = ['campaign_id', 'session_id', 'sessions', 'timespent']
-        events_count_labels = ['campaign_id', 'events_count']
+        events_count_labels = ['campaign_id', 'device_id', 'event', 'events_count']
 
         # запрос данных из API AppMetrica
         logger.info('Запрос основных параметров.')
         request_general = self._make_request(general_metrics, general_dimensions, 'ym:ts:urlParameter')
-
-        logger.info('Запрос количества запустивших приложение.')
-        request_active_users = self._make_request(user_metrics, user_dimensions, 'ym:u:profileUrlParameter')
 
         logger.info('Запрос количества сессий.')
         request_sessions = self._make_request(session_metrics, session_dimensions, 'ym:ts:urlParameter')
@@ -92,18 +100,29 @@ class YandexAppAPI:
         general_df.columns = general_labels
         general_df.conversion_clicks = general_df.conversion_clicks.apply(lambda x: round(x, 2))
 
-        # ТРЕБУЕТСЯ ПРАВКА
+        # датафрейм с общей информацией о событиях
+        events_count_df = pd.read_csv(io.StringIO(request_events_count.text))
+        events_count_df.columns = events_count_labels
+
+        # общее кол-во событий
+        total_events_df = events_count_df.copy()
+        total_events_df = total_events_df.drop(columns=['event', 'device_id'])
+        total_events_df = total_events_df.groupby('campaign_id').sum().reset_index()
+        total_events_df = total_events_df.sort_values(by='events_count', ascending=False)
+
+        # ТРЕБУЕТСЯ ПРОВЕРКА (нужно ли сравнивать id устройств событий с id устройств установок)
         # количество пользователей, установивших приложение и вошедших в него хотя бы 1 раз
-        users_df = pd.read_csv(io.StringIO(request_active_users.text))
-        users_df.columns = new_users_labels
+        log_count_df = events_count_df.copy()
+        log_count_df = log_count_df[log_count_df['event'] == 'Запуск приложения и отображение экрана заставки.']
+        log_count_df = log_count_df.drop(columns=['device_id', 'event'])
+        # любое количество входов > 0 считаем как 1 уникальный вход
+        log_count_df['active_users'] = np.where(log_count_df['events_count'] > 0, 1, 0)
+        log_count_df = log_count_df.drop(columns='events_count')
+        log_count_df = log_count_df.groupby('campaign_id').sum().reset_index()
 
         # количество сессии, время сессий
         sessions_df = pd.read_csv(io.StringIO(request_sessions.text)).fillna(0)
         sessions_df.columns = session_labels
-
-        # общее кол-во событий
-        events_count_df = pd.read_csv(io.StringIO(request_events_count.text))
-        events_count_df.columns = events_count_labels
 
         # ДОБАВИТЬ ПОДТЯГИВАНИЕ ИЗ БД + ГРУППИРОВКУ ПО CAMPAIGN_ID !!!!!!!!!!!!!!!!!
         general_df.insert(1, column='campaign_name', value=['Всего', 'Узнай Москву/РСЯ/Экскурсии, гиды/iOS (РФ)',
@@ -121,8 +140,9 @@ class YandexAppAPI:
                                                             'Узнай Москву/Поиск/Двойники в AR/iOS',
                                                             'Узнай Москву/Поиск/Выходные/IOS'])
 
+        # Формирование результирующего датафрейма (со всеми параметрами)
         # добавление столбца с количеством новых пользователей
-        general_df = general_df.merge(on='campaign_id', how='left', right=users_df)
+        general_df = general_df.merge(on='campaign_id', how='left', right=log_count_df)
 
         # добавление столбца с количеством сессий
         # отсутствующие в ответе API кампании заполняем как кампании с 0-м показателем сессий
@@ -141,7 +161,7 @@ class YandexAppAPI:
                                                      (general_df['sessions'] / general_df['installs']).round(2), 0)
 
         # добавление столбца с количеством событий
-        general_df = general_df.merge(on='campaign_id', how='left', right=events_count_df)
+        general_df = general_df.merge(on='campaign_id', how='left', right=total_events_df)
 
         # столбец с количеством событий на 1 сессию
         general_df['events_per_session'] = np.where(general_df['sessions'] != 0,
@@ -190,6 +210,7 @@ class YandexAppAPI:
 
         return general_df
 
+    @fillna_decorator
     def get_campaign_groups(self, general_df: pd.DataFrame):
         """
         Данные (обработка) для листа "Группы кампаний"
@@ -252,6 +273,7 @@ class YandexAppAPI:
         result = pd.concat([total_row, result])
         return result
 
+    @fillna_decorator
     def get_week_distribution(self):
         """
         Получение и обработка данных для листа "Распределение по неделям"
@@ -291,6 +313,7 @@ class YandexAppAPI:
 
         return result
 
+    @fillna_decorator
     def get_retention_by_weeks(self):
         """
         Данные по retention за период
@@ -326,6 +349,7 @@ class YandexAppAPI:
 
         return retention_df
 
+    @fillna_decorator
     def get_events(self) -> pd.DataFrame:
         """
         Получение и обработка данных для листа "События"
@@ -344,6 +368,7 @@ class YandexAppAPI:
 
         return events_df
 
+    @fillna_decorator
     def get_installs_info(self):
         metrics = 'ym:i:advInstallDevices'
         dimensions = 'ym:i:regionCity,ym:i:operatingSystem,ym:i:mobileDeviceModel'
@@ -458,4 +483,4 @@ def create_report(app_id, date1, date2, campaigns, doc_header: str):
     workbook.close()
 
 
-create_report('2777872', '2025-11-1', '2025-11-30', CAMPAIGNS, 'Отчёт по кампании "Кампания"')
+create_report('2777872', '2025-10-1', '2025-11-30', CAMPAIGNS, 'Отчёт по кампании "Кампания"')
