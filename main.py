@@ -20,12 +20,14 @@ dotenv.load_dotenv()
 logging.basicConfig(level=logging.INFO, format='[{asctime}] #{levelname:4} {name}:{lineno} - {message}', style='{')
 logger = logging.getLogger('main.py')
 
+
 def status_decorator(func):
     """
     Декоратор для подсчёта времени на запрос и информировании об успешности запроса
     :param func:
     :return:
     """
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         start_time = perf_counter()
@@ -47,6 +49,7 @@ def fillna_decorator(func):
     :param func:
     :return:
     """
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         result = func(*args, **kwargs)
@@ -106,6 +109,30 @@ class YandexAppAPI:
         general_df = pd.read_csv(io.StringIO(request_general.text))
         general_df.columns = general_labels
         general_df.conversion_clicks = general_df.conversion_clicks.apply(lambda x: round(x, 2))
+        # имена кампаний из БД
+        campaigns_name_df = pd.DataFrame(
+            {'campaign_id': ['Итого и средние', '704011362', '704010325', '704011628', '704011482', '704011760',
+                             '704013108', '704010283', '704004623', '704002660',
+                             '704002262', '704002942', '704004722', '704005046', '704001940'],
+             'campaign_name': ['Всего', 'Узнай Москву/РСЯ/Экскурсии, гиды/iOS (РФ)',
+                               'Узнай Москву/РСЯ/Парки, усадьбы/iOS',
+                               'Узнай Москву/РСЯ/Музеи по наименованиям/iOS',
+                               'Узнай Москву/РСЯ/Достопримечательности, выставки, музеи/iOS (РФ)',
+                               'Узнай Москву/РСЯ/Достопримечательности в AR/iOS',
+                               'Узнай Москву/РСЯ/Двойники в AR/iOS',
+                               'Узнай Москву/РСЯ/Выходные/iOS,',
+                               'Узнай Москву/Поиск/Экспозиции, выставки, музеи/iOS',
+                               'Узнай Москву/Поиск/Экскурсии/iOS (РФ)',
+                               'Узнай Москву/Поиск/Парки, усадьбы/iOS',
+                               'Узнай Москву/Поиск/Достопримечательности/iOS (РФ)',
+                               'Узнай Москву/Поиск/Достопримечательности в AR/iOS',
+                               'Узнай Москву/Поиск/Двойники в AR/iOS',
+                               'Узнай Москву/Поиск/Выходные/IOS'
+                               ]})
+        # добавление имён кампаний
+        general_df = general_df.merge(campaigns_name_df, on='campaign_id', how='left')
+        general_labels.insert(1, 'campaign_name')
+        general_df = general_df[general_labels]
 
         # датафрейм с общей информацией о событиях
         events_count_df = pd.read_csv(io.StringIO(request_events_count.text))
@@ -131,23 +158,6 @@ class YandexAppAPI:
         # количество сессии, время сессий
         sessions_df = pd.read_csv(io.StringIO(request_sessions.text)).fillna(0)
         sessions_df.columns = session_labels
-
-        # ДОБАВИТЬ ПОДТЯГИВАНИЕ ИЗ БД + ГРУППИРОВКУ ПО CAMPAIGN_ID !!!!!!!!!!!!!!!!!
-        general_df.insert(1, column='campaign_name', value=['Всего', 'Узнай Москву/РСЯ/Экскурсии, гиды/iOS (РФ)',
-                                                            'Узнай Москву/РСЯ/Парки, усадьбы/iOS',
-                                                            'Узнай Москву/РСЯ/Музеи по наименованиям/iOS',
-                                                            'Узнай Москву/РСЯ/Достопримечательности, выставки, музеи/iOS (РФ)',
-                                                            'Узнай Москву/РСЯ/Достопримечательности в AR/iOS',
-                                                            'Узнай Москву/РСЯ/Двойники в AR/iOS',
-                                                            'Узнай Москву/РСЯ/Выходные/iOS,',
-                                                            'Узнай Москву/Поиск/Экспозиции, выставки, музеи/iOS',
-                                                            'Узнай Москву/Поиск/Экскурсии/iOS (РФ)',
-                                                            'Узнай Москву/Поиск/Парки, усадьбы/iOS',
-                                                            'Узнай Москву/Поиск/Достопримечательности/iOS (РФ)',
-                                                            'Узнай Москву/Поиск/Достопримечательности в AR/iOS',
-                                                            'Узнай Москву/Поиск/Двойники в AR/iOS',
-                                                            'Узнай Москву/Поиск/Выходные/IOS'
-                                                            ])
 
         # Формирование результирующего датафрейма (со всеми параметрами)
         # добавление столбца с количеством новых пользователей
@@ -489,6 +499,7 @@ def create_report(app_id, date1, date2, campaigns, doc_header: str):
 
     # закрытие и сохранение файла
     workbook.close()
+
 
 # НЕОБХОДИМО ДОБАВИТЬ ВО ВСЕ ДАТАФРЕЙМЫ ПРОВЕРКУ НА ПОЛУЧАЕМЫЕ ИЗ МЕТРИКИ ДАННЫЕ, ЕСЛИ ИЗ МЕТРИКИ НИЧЕГО НЕ ВЕРНУЛОСЬ В DATAFRAME
 # ДОЛЖНЫ БЫТЬ ВСЕ!!! КАМПАНИИ С 0 ПАРАМЕТРАМИ
