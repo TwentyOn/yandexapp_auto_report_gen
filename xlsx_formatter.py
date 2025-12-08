@@ -76,7 +76,6 @@ class XlsxForm:
                     cur_format = self.percent_format
                 else:
                     cur_format = self.float_format
-
                 general_sheet.write(row, col, data, cur_format)
 
         # условное форматирование
@@ -95,6 +94,11 @@ class XlsxForm:
         # запись заголовка
         for i, header in enumerate(['Номер недели', 'Количество установок', 'Количество сессий']):
             distribution_sheet.write(0, i, header, self.header_format)
+
+        if installs_sessions_by_week.empty:
+            distribution_sheet.merge_range('A2:C2', 'Недостаточно данных для вывода', self.text_format)
+            logger.warning('Недостаточно данных для вывода')
+            return
 
         # запись данных
         for row, i in enumerate(range(len(installs_sessions_by_week)), start=1):
@@ -131,12 +135,26 @@ class XlsxForm:
 
         logger.info('Успех.')
 
-    def write_retention_by_weeks(self, retention_df: pd.DataFrame):
+    def write_retention_by_weeks(self, retention_df: pd.DataFrame, general_df: pd.DataFrame):
         logger.info('Записываю лист "Retention-анализ".')
 
-        cols_count = len(retention_df.iloc[0])
-
         retention_sheet = self.workbook.add_worksheet('Retention-анализ')
+
+        if retention_df.empty or general_df.empty:
+            retention_sheet.merge_range('A2:C2', 'Недостаточно данных для вывода', self.text_format)
+            logger.warning('Недостаточно данных для вывода')
+            return
+
+        # добавление в retention поля с установками
+        retention_df = retention_df.merge(general_df[['campaign_id', 'installs']], on='campaign_id', how='left')
+        labels = retention_df.columns.tolist()
+        # делаем колонку с кол-вом установок второй по счёту
+        labels.insert(1, labels.pop(-1))
+        retention_df = retention_df[labels]
+
+        # количество колонок
+        cols_count = len(retention_df.columns)
+
         retention_sheet.set_column(f'A:{string.ascii_uppercase[cols_count]}', 16)
         retention_sheet.set_row(0, 60)
 
@@ -150,6 +168,8 @@ class XlsxForm:
         # запись заголовка
         for i, header in enumerate(headers):
             retention_sheet.write(0, i, header, self.header_format)
+
+        print(retention_df)
 
         # запись данных
         for row, i in enumerate(range(len(retention_df)), start=1):
@@ -218,6 +238,12 @@ class XlsxForm:
     def write_installs_by_regions(self, installs_info: pd.DataFrame = None):
         logger.info('Записываю лист "Регионы (Установки)"')
         installs_by_regions_sheet = self.workbook.add_worksheet('Регионы (Установки)')
+
+        if installs_info.empty:
+            installs_by_regions_sheet.merge_range('A2:C2', 'Недостаточно данных для вывода', self.text_format)
+            logger.warning('Недостаточно данных для вывода')
+            return
+
         installs_by_regions_sheet.set_column(f'A:A', 25)
         installs_by_regions_sheet.set_column(f'B:B', 20)
         installs_by_regions_sheet.set_row(0, 60)
@@ -226,7 +252,7 @@ class XlsxForm:
         regions = installs_info.drop(columns=['oc', 'device_type'])
         regions = regions.groupby('city').sum().reset_index()
         regions = regions.sort_values(by='installs', ascending=False).reset_index(drop=True)
-        regions = regions.drop(index=[0])
+        regions = regions.drop(index=[0], errors='ignore')
 
         # запись заголовка
         installs_by_regions_sheet.write(0, 0, 'Город', self.header_format)
@@ -249,6 +275,11 @@ class XlsxForm:
     def write_installs_by_oc(self, installs_info: pd.DataFrame):
         logger.info('Записываю лист "ОС (Установки)"')
         installs_by_oc_sheet = self.workbook.add_worksheet('ОС (Установки)')
+
+        if installs_info.empty:
+            installs_by_oc_sheet.merge_range('A2:C2', 'Недостаточно данных для вывода', self.text_format)
+            logger.warning('Недостаточно данных для вывода')
+            return
 
         installs_by_oc_sheet.set_column(f'A:A', 25)
         installs_by_oc_sheet.set_column(f'B:B', 20)
@@ -281,6 +312,11 @@ class XlsxForm:
     def write_installs_by_brand(self, installs_info: pd.DataFrame):
         logger.info('Записываю лист "Марка (Установки)"')
         installs_by_brand_sheet = self.workbook.add_worksheet('Марка (Установки)')
+
+        if installs_info.empty:
+            installs_by_brand_sheet.merge_range('A2:C2', 'Недостаточно данных для вывода', self.text_format)
+            logger.warning('Недостаточно данных для вывода')
+            return
 
         installs_by_brand_sheet.set_column(f'A:A', 25)
         installs_by_brand_sheet.set_column(f'B:B', 20)

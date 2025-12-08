@@ -92,6 +92,7 @@ class YandexAppAPI:
         event_count_dimensions = "ym:ce2:profileUrlParameter{'utm_campaign'},ym:ce2:device,ym:ce2:eventLabel"
 
         general_labels = ['campaign_id', 'clicks', 'installs', 'conversion_clicks']
+
         session_labels = ['campaign_id', 'session_id', 'sessions', 'timespent']
         events_count_labels = ['campaign_id', 'device_id', 'event', 'events_count']
 
@@ -106,9 +107,15 @@ class YandexAppAPI:
         request_events_count = self._make_request(event_count_metrics, event_count_dimensions, 'ym:ts:urlParameter')
 
         # общие показатели кликов, установок, конверсии кликов
+        campaigns_ids = ['Итого и средние', '704011362', '704010325', '704011628', '704011482', '704011760',
+                         '704013108', '704010283', '704004623', '704002660',
+                         '704002262', '704002942', '704004722', '704005046', '704001940']
+        base_df = pd.DataFrame({'campaign_id': campaigns_ids})
         general_df = pd.read_csv(io.StringIO(request_general.text))
         general_df.columns = general_labels
+        general_df = base_df.merge(general_df, on='campaign_id', how='left')
         general_df.conversion_clicks = general_df.conversion_clicks.apply(lambda x: round(x, 2))
+
         # имена кампаний из БД
         campaigns_name_df = pd.DataFrame(
             {'campaign_id': ['Итого и средние', '704011362', '704010325', '704011628', '704011482', '704011760',
@@ -129,6 +136,7 @@ class YandexAppAPI:
                                'Узнай Москву/Поиск/Двойники в AR/iOS',
                                'Узнай Москву/Поиск/Выходные/IOS'
                                ]})
+
         # добавление имён кампаний
         general_df = general_df.merge(campaigns_name_df, on='campaign_id', how='left')
         general_labels.insert(1, 'campaign_name')
@@ -173,6 +181,8 @@ class YandexAppAPI:
         # общие показатели количества сессий
         sessions_count_df = sessions_df.drop(columns=['session_id', 'timespent']).groupby('campaign_id').sum()
         general_df = general_df.merge(on='campaign_id', how='left', right=sessions_count_df)
+        general_df['sessions'] = pd.to_numeric(general_df['sessions'], errors='coerce')
+        general_df['installs'] = pd.to_numeric(general_df['installs'])
 
         # столбец с количеством сессий на 1 установку
         general_df['session_per_install'] = np.where((general_df['sessions'] != 0) & (general_df['installs'] != 0),
@@ -187,7 +197,7 @@ class YandexAppAPI:
 
         # среднее время сессий в секундах
         mean_session_time_df = sessions_df.drop(columns=['session_id', 'sessions']).groupby(
-            'campaign_id').mean().round(0).rename(columns={'timespent': 'mean_timespent'}).reset_index()
+            'campaign_id').mean().round(2).rename(columns={'timespent': 'mean_timespent'}).reset_index()
         summary_mean_time_row = mean_session_time_df['campaign_id'] == 'Итого и средние'
         mean_sessions_time = mean_session_time_df.loc[~summary_mean_time_row, 'mean_timespent'].mean()
         mean_session_time_df.loc[summary_mean_time_row, 'mean_timespent'] = mean_sessions_time
@@ -311,9 +321,12 @@ class YandexAppAPI:
         logger.info('Запрос сессий, сгруппированных по дате.')
         sessions_request = self._make_request(sessions_metrics, sessions_dimensions, 'ym:ts:urlParameter')
 
-        # DataFrame-ы с удаленной строкой итогов (index=0), т.к не требуется при отображении
-        installs_df = pd.read_csv(io.StringIO(installs_request.text)).drop(index=[0]).reset_index(drop=True)
-        sessions_df = pd.read_csv(io.StringIO(sessions_request.text)).drop(index=[0]).reset_index(drop=True)
+        try:
+            # DataFrame-ы с удаленной строкой итогов (index=0), т.к не требуется при отображении
+            installs_df = pd.read_csv(io.StringIO(installs_request.text)).drop(index=[0]).reset_index(drop=True)
+            sessions_df = pd.read_csv(io.StringIO(sessions_request.text)).drop(index=[0]).reset_index(drop=True)
+        except KeyError:
+            return pd.DataFrame()
 
         # обработка и группировка данных по неделям
         installs_df.columns = ['datetime', 'installs']
@@ -342,7 +355,7 @@ class YandexAppAPI:
         campaign_id_param = 'utm_campaign'
 
         # целое количество недель в периоде
-        weeks_num = int((self.date2 - self.date1).days / 7)
+        weeks_num = max(1, int((self.date2 - self.date1).days / 7))
 
         # отдельный url api-запрос для получения retention
         api_url = 'https://api.appmetrica.yandex.ru/v2/user/acquisition.csv'
@@ -360,7 +373,12 @@ class YandexAppAPI:
 
         retention_df = pd.read_csv(io.StringIO(retention_request.text))
         # удаление строки итогов
-        retention_df = retention_df.drop(index=[0]).reset_index(drop=True)
+        try:
+            retention_df = retention_df.drop(index=[0]).reset_index(drop=True)
+        except KeyError:
+            logger.warning('За указанный период не удалось получить параметр retention')
+            return pd.DataFrame()
+
         labels = retention_df.columns.tolist()
         labels[0] = 'campaign_id'
         retention_df.columns = labels
@@ -443,6 +461,25 @@ class YandexAppAPI:
         data = json.loads(data)
         return data
 
+    @staticmethod
+    def get_base_df(general_df):
+        general_labels = ['campaign_id', 'campaign_name', 'clicks', 'installs',
+                          'conversion_clicks', 'active_users', 'sessions', 'session_per_install',
+                          'events_count', 'events_per_session', 'mean_timespent',
+                          'median_timespent', 'sessions_lt_10', 'sessions_10_30',
+                          'sessions_gt_30']
+        # все значения кроме campaign_id по-умолчанию
+        for label in general_labels[1:]:
+            if label == 'campaign_name':
+                general_df[label] = 'Без имени'
+            else:
+                general_df[label] = 0
+
+        # восстановление порядка следования колонок
+        general_df = general_df[general_labels]
+
+        return general_df
+
 
 CAMPAIGNS = [704011362, 704010325, 704011628, 704011482, 704011760, 704013108, 704010283, 704004623, 704002660,
              704002262, 704002942, 704004722, 704005046, 704001940]
@@ -470,13 +507,6 @@ def create_report(app_id, date1, date2, campaigns, doc_header: str):
     events = api_req.get_events()
     installs_info = api_req.get_installs_info()
 
-    # добавление в retention DataFrame поля с установками
-    retention = retention.merge(general[['campaign_id', 'installs']], on='campaign_id', how='left')
-    labels = retention.columns.tolist()
-    # делаем колонку с кол-вом установок второй по счёту
-    labels.insert(1, labels.pop(-1))
-    retention = retention[labels]
-
     # создание файла в оперативной памяти
     with io.BytesIO() as file:
         workbook = xlsxwriter.Workbook(file, options={'in_memory': True})
@@ -491,7 +521,7 @@ def create_report(app_id, date1, date2, campaigns, doc_header: str):
     xlsx_form.write_general(general, sheet_name='Все кампании')
     xlsx_form.write_general(general_groups, sheet_name='Группы кампаний')
     xlsx_form.write_week_distribution(week_distribution)
-    xlsx_form.write_retention_by_weeks(retention)
+    xlsx_form.write_retention_by_weeks(retention, general)
     xlsx_form.write_events(events)
     xlsx_form.write_installs_by_regions(installs_info)
     xlsx_form.write_installs_by_oc(installs_info)
@@ -503,4 +533,4 @@ def create_report(app_id, date1, date2, campaigns, doc_header: str):
 
 # НЕОБХОДИМО ДОБАВИТЬ ВО ВСЕ ДАТАФРЕЙМЫ ПРОВЕРКУ НА ПОЛУЧАЕМЫЕ ИЗ МЕТРИКИ ДАННЫЕ, ЕСЛИ ИЗ МЕТРИКИ НИЧЕГО НЕ ВЕРНУЛОСЬ В DATAFRAME
 # ДОЛЖНЫ БЫТЬ ВСЕ!!! КАМПАНИИ С 0 ПАРАМЕТРАМИ
-create_report('2777872', '2025-11-1', '2025-11-30', CAMPAIGNS, 'Отчёт - приложение "Узнай Москву"')
+create_report('2777872', '2025-11-29', '2025-11-30', CAMPAIGNS, 'Отчёт - приложение "Узнай Москву"')
