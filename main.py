@@ -19,7 +19,7 @@ dotenv.load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format='[{asctime}] #{levelname:4} {name}:{lineno} - {message}', style='{')
 logger = logging.getLogger('main.py')
-
+pd.set_option('future.no_silent_downcasting', True)
 
 def status_decorator(func):
     """
@@ -190,10 +190,8 @@ class YandexAppAPI:
 
         # добавление столбца с количеством событий
         general_df = general_df.merge(on='campaign_id', how='left', right=total_events_df).fillna(0)
-
         # столбец с количеством событий на 1 сессию
-        general_df['events_per_session'] = np.where(general_df['sessions'] != 0,
-                                                    (general_df['events_count'] / general_df['sessions']).round(2), 0)
+        general_df['events_per_session'] = general_df.apply(lambda x: 0 if x['sessions'] == 0 else x['events_count'] / x['sessions'], axis=1)
 
         # среднее время сессий в секундах
         mean_session_time_df = sessions_df.drop(columns=['session_id', 'sessions']).groupby(
@@ -236,7 +234,7 @@ class YandexAppAPI:
         sessions_time_gt_30_df.loc[summary_session_time_gt_30, 'sessions_gt_30'] = mean_perc_session_gt_30
         general_df = general_df.merge(on='campaign_id', how='left', right=sessions_time_gt_30_df)
 
-        return general_df
+        return general_df.sort_values(by='clicks', ascending=False)
 
     @fillna_decorator
     def get_campaign_groups(self, general_df: pd.DataFrame):
@@ -289,9 +287,11 @@ class YandexAppAPI:
             'conversion_clicks': [result['conversion_clicks'].mean()],
             'active_users': [result['active_users'].sum()],
             'sessions': [result['sessions'].sum()],
-            'session_per_install': [result['sessions'].sum() / result['installs'].sum()],
+            'session_per_install': [
+                0 if result['installs'].sum() == 0 else result['sessions'].sum() / result['installs'].sum()],
             'events_count': [result['events_count'].sum()],
-            'events_per_session': [result['events_count'].sum() / result['sessions'].sum()],
+            'events_per_session': [
+                0 if result['sessions'].sum() == 0 else result['events_count'].sum() / result['sessions'].sum()],
             'mean_timespent': [result['mean_timespent'].mean()],
             'median_timespent': [general_df['median_timespent'].mean()],
             'sessions_lt_10': [result['sessions_lt_10'].mean()],
@@ -461,25 +461,6 @@ class YandexAppAPI:
         data = json.loads(data)
         return data
 
-    @staticmethod
-    def get_base_df(general_df):
-        general_labels = ['campaign_id', 'campaign_name', 'clicks', 'installs',
-                          'conversion_clicks', 'active_users', 'sessions', 'session_per_install',
-                          'events_count', 'events_per_session', 'mean_timespent',
-                          'median_timespent', 'sessions_lt_10', 'sessions_10_30',
-                          'sessions_gt_30']
-        # все значения кроме campaign_id по-умолчанию
-        for label in general_labels[1:]:
-            if label == 'campaign_name':
-                general_df[label] = 'Без имени'
-            else:
-                general_df[label] = 0
-
-        # восстановление порядка следования колонок
-        general_df = general_df[general_labels]
-
-        return general_df
-
 
 CAMPAIGNS = [704011362, 704010325, 704011628, 704011482, 704011760, 704013108, 704010283, 704004623, 704002660,
              704002262, 704002942, 704004722, 704005046, 704001940]
@@ -533,4 +514,4 @@ def create_report(app_id, date1, date2, campaigns, doc_header: str):
 
 # НЕОБХОДИМО ДОБАВИТЬ ВО ВСЕ ДАТАФРЕЙМЫ ПРОВЕРКУ НА ПОЛУЧАЕМЫЕ ИЗ МЕТРИКИ ДАННЫЕ, ЕСЛИ ИЗ МЕТРИКИ НИЧЕГО НЕ ВЕРНУЛОСЬ В DATAFRAME
 # ДОЛЖНЫ БЫТЬ ВСЕ!!! КАМПАНИИ С 0 ПАРАМЕТРАМИ
-create_report('2777872', '2025-11-29', '2025-11-30', CAMPAIGNS, 'Отчёт - приложение "Узнай Москву"')
+create_report('2777872', '2025-11-1', '2025-11-30', CAMPAIGNS, 'Отчёт - приложение "Узнай Москву"')

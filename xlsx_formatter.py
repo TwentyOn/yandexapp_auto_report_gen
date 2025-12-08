@@ -169,8 +169,6 @@ class XlsxForm:
         for i, header in enumerate(headers):
             retention_sheet.write(0, i, header, self.header_format)
 
-        print(retention_df)
-
         # запись данных
         for row, i in enumerate(range(len(retention_df)), start=1):
             item = retention_df.iloc[i]
