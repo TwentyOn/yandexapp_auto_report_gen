@@ -40,4 +40,4 @@ sessions['new'] = sessions.apply(lambda x: x['sessions'] * 2, axis=1)
 print(sessions)
 
 data = [('123', 'name1'), ('456', 'name2')]
-print(pd.DataFrame(data, columns=['campaign_id', 'campaign_name']))
+print(pd.DataFrame(data, columns=['campaign_id', 'campaign_name']).to_dict('list'))

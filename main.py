@@ -10,7 +10,7 @@ import xlsxwriter
 
 from utils.xlsx_formatter import CreateXlsx
 from utils.yapp_data_api import YandexAppAPI
-from database.models import Report, Application, GlobalCampaign
+from database.models import Report, Application, GlobalCampaign, YdCampaign
 from sqlalchemy import select
 
 from database.db import session_maker
@@ -21,11 +21,37 @@ logging.basicConfig(level=logging.INFO, format='[{asctime}] #{levelname:4} {name
 logger = logging.getLogger('main.py')
 
 
-def get_campaigns_ids():
-    pass
+def get_campaigns_ids(new_report: Report, by_groups):
+    with session_maker() as session:
+        global_campaign_obj: GlobalCampaign = session.execute(
+            select(GlobalCampaign).where(GlobalCampaign.id == new_report.global_campaign_id)).scalar()
+
+        yd_groups = {}
+        groups = global_campaign_obj.groups
+        for group in groups:
+            if group.name not in yd_groups:
+                yd_groups[group.name] = []
+            for yd_camp in group.yd_campaigns:
+                yd_groups[group.name].append(yd_camp.yd_campaign_id)
+        # if by_groups:
+        #     return yd_groups
+        # return list(chain(*yd_groups.values()))
 
 def get_campaigns_ids_by_group():
-    pass
+    with session_maker() as session:
+        global_campaign_obj: GlobalCampaign = session.execute(
+            select(GlobalCampaign).where(GlobalCampaign.id == new_report.global_campaign_id)).scalar()
+
+        yd_groups = {}
+        groups = global_campaign_obj.groups
+        for group in groups:
+            if group.name not in yd_groups:
+                yd_groups[group.name] = []
+            for yd_camp in group.yd_campaigns:
+                yd_groups[group.name].append(yd_camp.yd_campaign_id)
+        # if by_groups:
+        #     return yd_groups
+        # return list(chain(*yd_groups.values()))
 
 # НЕТ ФИЛЬТРАЦИИ ПО КАМПАНИЯМ ГЛОБАЛЬНОЙ КАМПАНИИ
 
@@ -76,22 +102,6 @@ def create_report(app_id, date1, date2, campaigns, doc_header: str):
 CAMPAIGNS = [704011362, 704010325, 704011628, 704011482, 704011760, 704013108, 704010283, 704004623, 704002660,
              704002262, 704002942, 704004722, 704005046, 704001940]
 
-with session_maker() as session:
-    report: Report = session.execute(select(Report)).scalar()
-    bd_app_obj: Application = session.execute(
-        select(Application).where(Application.id == report.application_id)).scalar()
-    global_campaign_obj: GlobalCampaign = session.execute(
-        select(GlobalCampaign).where(GlobalCampaign.id == report.global_campaign_id)).scalar()
-
-    yd_groups = {}
-    groups = global_campaign_obj.groups
-    for group in groups:
-        if group.name not in yd_groups:
-            yd_groups[group.name] = []
-        for yd_camp in group.yd_campaigns:
-            yd_groups[group.name].append(yd_camp.yd_campaign_id)
-    print(yd_groups)
-    print(list(chain(*yd_groups.values())))
 
 # НЕОБХОДИМО ДОБАВИТЬ ВО ВСЕ ДАТАФРЕЙМЫ ПРОВЕРКУ НА ПОЛУЧАЕМЫЕ ИЗ МЕТРИКИ ДАННЫЕ, ЕСЛИ ИЗ МЕТРИКИ НИЧЕГО НЕ ВЕРНУЛОСЬ В DATAFRAME
 # ДОЛЖНЫ БЫТЬ ВСЕ!!! КАМПАНИИ С 0 ПАРАМЕТРАМИ
@@ -104,14 +114,23 @@ while True:
         new_report: Report | None = session.execute(stmt).scalar()
         if new_report:
             try:
-                new_report.status_id = 2
+                # new_report.status_id = 2
                 session.commit()
 
                 app_id = session.execute(
                     select(Application.id).where(Application.id == new_report.application_id)).scalar()
                 start_date = new_report.start_date
                 end_date = new_report.end_date
-                campaigns_ids
+                campaigns_pairs = []
+                gl_c = session.execute(
+                    select(GlobalCampaign).where(GlobalCampaign.id == new_report.global_campaign_id)).scalar()
+                print(gl_c.groups)
+                import pandas as pd
+                data = [(yd_camp.yd_campaign_id, yd_camp.name, yd_camp.group.name) for campaign_group in gl_c.groups for yd_camp in campaign_group.yd_campaigns]
+                d = pd.DataFrame(data, columns=['campaign_id', 'campaign_name', 'campaign_group'])
+                groups = d.groupby('campaign_group')['campaign_id'].apply(list).to_dict()
+                ids = d['campaign_id']
+                print(ids)
 
             except Exception as err:
                 new_report.status_id = 4
