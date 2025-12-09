@@ -1,6 +1,6 @@
 import random
 
-from utm_tag.test_part2 import get_campaign_params
+from get_utm_tag.test_part2 import get_campaign_params
 import pandas as pd
 
 # campaigns = [704011362, 704010325, 704011628, 704011482, 704011760, 704013108, 704010283, 704004623, 704002660,
@@ -9,7 +9,7 @@ import pandas as pd
 # print(campaigns)
 # print(get_campaign_params(campaigns))
 
-camp_ids = ['704011362', '704010325', '704011628', '704011760',
+camp_ids = ['итоги', '704011362', '704010325', '704011628', '704011760',
             '704013108', '704010283', '704004623', '704002660',
             '704002262', '704002942', '704004722', '704005046', '704001940', '704011482']
 campaigns_df = pd.DataFrame(
@@ -34,10 +34,10 @@ names = pd.DataFrame({'campaign_id': camp_ids,
                       })
 
 sessions = pd.DataFrame({'campaign_id': camp_ids[:-1],
-                         'sessions': [random.random() for _ in range(len(camp_ids)-1)]})
+                         'sessions': [2 for _ in range(len(camp_ids)-1)]})
 
-campaigns_df = campaigns_df.merge(names, on='campaign_id', how='left')
-empty = pd.DataFrame()
-print(campaigns_df)
-campaigns_df = campaigns_df.merge(sessions, how='left', on='campaign_id').fillna(0)
-print(campaigns_df)
+sessions['new'] = sessions.apply(lambda x: x['sessions'] * 2, axis=1)
+print(sessions)
+
+data = [('123', 'name1'), ('456', 'name2')]
+print(pd.DataFrame(data, columns=['campaign_id', 'campaign_name']))

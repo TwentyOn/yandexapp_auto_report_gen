@@ -10,7 +10,7 @@ from xlsxwriter.worksheet import Worksheet
 logger = logging.getLogger(__name__)
 
 
-class XlsxForm:
+class CreateXlsx:
     def __init__(self, workbook: xlsxwriter.Workbook, header: str):
         self.workbook = workbook
         self.header = header
