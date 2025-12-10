@@ -1,62 +1,29 @@
+import contextlib
+import time
 import traceback
-from datetime import datetime
+from datetime import datetime, date
 import io
-import os
 import logging
-from itertools import chain
-
-import dotenv
 import xlsxwriter
 
 from utils.xlsx_formatter import CreateXlsx
 from utils.yapp_data_api import YandexAppAPI
-from database.models import Report, Application, GlobalCampaign, YdCampaign
+from utils.s3_storage import storage
+from database.models import Report, GlobalCampaign, CampaignGroup
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import selectinload, Session
 
 from database.db import session_maker
-
-dotenv.load_dotenv()
+from settings import YAPP_TOKEN
 
 logging.basicConfig(level=logging.INFO, format='[{asctime}] #{levelname:4} {name}:{lineno} - {message}', style='{')
 logger = logging.getLogger('main.py')
 
-
-def get_campaigns_ids(new_report: Report, by_groups):
-    with session_maker() as session:
-        global_campaign_obj: GlobalCampaign = session.execute(
-            select(GlobalCampaign).where(GlobalCampaign.id == new_report.global_campaign_id)).scalar()
-
-        yd_groups = {}
-        groups = global_campaign_obj.groups
-        for group in groups:
-            if group.name not in yd_groups:
-                yd_groups[group.name] = []
-            for yd_camp in group.yd_campaigns:
-                yd_groups[group.name].append(yd_camp.yd_campaign_id)
-        # if by_groups:
-        #     return yd_groups
-        # return list(chain(*yd_groups.values()))
-
-def get_campaigns_ids_by_group():
-    with session_maker() as session:
-        global_campaign_obj: GlobalCampaign = session.execute(
-            select(GlobalCampaign).where(GlobalCampaign.id == new_report.global_campaign_id)).scalar()
-
-        yd_groups = {}
-        groups = global_campaign_obj.groups
-        for group in groups:
-            if group.name not in yd_groups:
-                yd_groups[group.name] = []
-            for yd_camp in group.yd_campaigns:
-                yd_groups[group.name].append(yd_camp.yd_campaign_id)
-        # if by_groups:
-        #     return yd_groups
-        # return list(chain(*yd_groups.values()))
-
-# НЕТ ФИЛЬТРАЦИИ ПО КАМПАНИЯМ ГЛОБАЛЬНОЙ КАМПАНИИ
+S3_PATH = 'gen_report_yandexapp'
 
 
-def create_report(app_id, date1, date2, campaigns, doc_header: str):
+def create_report(app_id, date1, date2, campaigns_data, doc_header: str) -> bytes:
     """
     Метод для управления созданием отчёта
     :param app_id:
@@ -66,8 +33,7 @@ def create_report(app_id, date1, date2, campaigns, doc_header: str):
     :param doc_header:
     :return:
     """
-    token = os.getenv('yapp_token')
-    api_req = YandexAppAPI(token, app_id, date1, date2, campaigns)
+    api_req = YandexAppAPI(YAPP_TOKEN, app_id, date1, date2, campaigns_data)
     general = api_req.get_all_campaigns()
     general_groups = api_req.get_campaign_groups(general)
     week_distribution = api_req.get_week_distribution()
@@ -76,64 +42,134 @@ def create_report(app_id, date1, date2, campaigns, doc_header: str):
     installs_info = api_req.get_installs_info()
 
     # создание файла в оперативной памяти
-    with io.BytesIO() as file:
-        workbook = xlsxwriter.Workbook(file, options={'in_memory': True})
-        workbook.filename = 'yapp_report.xlsx'
-
-    # форматирование даты в ру-формат для вставки в заголовок листа
-    form_d1 = datetime.strptime(date1, '%Y-%m-%d').date().strftime('%d.%m.%Y')
-    form_d2 = datetime.strptime(date2, '%Y-%m-%d').date().strftime('%d.%m.%Y')
-
-    # формирование листов
-    xlsx_form = CreateXlsx(workbook, f'{doc_header} {form_d1} - {form_d2}')
-    xlsx_form.write_general(general, sheet_name='Все кампании')
-    xlsx_form.write_general(general_groups, sheet_name='Группы кампаний')
-    xlsx_form.write_week_distribution(week_distribution)
-    xlsx_form.write_retention_by_weeks(retention, general)
-    xlsx_form.write_events(events)
-    xlsx_form.write_installs_by_regions(installs_info)
-    xlsx_form.write_installs_by_oc(installs_info)
-    xlsx_form.write_installs_by_brand(installs_info)
-
-    # закрытие и сохранение файла
-    workbook.close()
+    with io.BytesIO() as xlsx_file:
+        workbook = xlsxwriter.Workbook(xlsx_file, options={'in_memory': True})
+        # раскоментировать, если нужно сохрание в файловой системе
+        # workbook.filename = 'yapp_report.xlsx'
 
 
-CAMPAIGNS = [704011362, 704010325, 704011628, 704011482, 704011760, 704013108, 704010283, 704004623, 704002660,
-             704002262, 704002942, 704004722, 704005046, 704001940]
+        # формирование листов
+        xlsx_form = CreateXlsx(workbook, doc_header)
+        xlsx_form.write_general(general, sheet_name='Все кампании')
+        xlsx_form.write_general(general_groups, sheet_name='Группы кампаний')
+        xlsx_form.write_week_distribution(week_distribution)
+        xlsx_form.write_retention_by_weeks(retention, general)
+        xlsx_form.write_events(events)
+        xlsx_form.write_installs_by_regions(installs_info)
+        xlsx_form.write_installs_by_oc(installs_info)
+        xlsx_form.write_installs_by_brand(installs_info)
+
+        # закрытие и сохранение документа
+        workbook.close()
+
+        xlsx_file.seek(0)
+        xlsx_file = xlsx_file.getvalue()
+    return xlsx_file
 
 
-# НЕОБХОДИМО ДОБАВИТЬ ВО ВСЕ ДАТАФРЕЙМЫ ПРОВЕРКУ НА ПОЛУЧАЕМЫЕ ИЗ МЕТРИКИ ДАННЫЕ, ЕСЛИ ИЗ МЕТРИКИ НИЧЕГО НЕ ВЕРНУЛОСЬ В DATAFRAME
-# ДОЛЖНЫ БЫТЬ ВСЕ!!! КАМПАНИИ С 0 ПАРАМЕТРАМИ
+@contextlib.contextmanager
+def get_new_request(session: Session):
+    # statement
+    stmt = (
+        select(Report)
+        .where(Report.status_id == 1)
+        .options(
+            selectinload(Report.application),
+            selectinload(Report.global_campaign)
+            .selectinload(GlobalCampaign.groups)
+            .selectinload(CampaignGroup.yd_campaigns)
+        )
+    )
+    report = session.execute(stmt)
+    if report:
+        report.status_id = 2
+        session.commit()
+        try:
+            yield new_report_obj
+            report.status_id = 3
+
+        except Exception:
+            report.status_id = 4
+            raise
+    else:
+        yield None
+
 # ДОБАВИТЬ СКРИПТ СТЁПЫ НА ОПРЕДЕЛЕНИЕ URL-ПАРАМЕТРА с campaign_id
-# create_report('2777872', '2025-11-1', '2025-11-30', CAMPAIGNS, 'Отчёт - приложение "Узнай Москву"')
+
+# бесконечный цикл ожидания нового отчёта
 while True:
-    with session_maker() as session:
-        # statement
-        stmt = select(Report).where(Report.status_id == 1).order_by(Report.created_at.asc()).limit(1)
-        new_report: Report | None = session.execute(stmt).scalar()
-        if new_report:
-            try:
-                # new_report.status_id = 2
+    try:
+        with session_maker() as session:
+            # statement
+            stmt = (
+                select(Report)
+                .where(Report.status_id == 1)
+                .order_by(Report.created_at.asc())
+                .limit(1)
+                .with_for_update(skip_locked=True)
+                .options(
+                    selectinload(Report.application),
+                    selectinload(Report.global_campaign)
+                    .selectinload(GlobalCampaign.groups)
+                    .selectinload(CampaignGroup.yd_campaigns)
+                )
+            )
+            # объект Report из БД
+            new_report_obj: Report | None = session.execute(stmt).scalar()
+
+            if new_report_obj:
+                logger.info(f'Новый отчёт от {new_report_obj.created_at}')
+                new_report_obj.status_id = 2
                 session.commit()
 
-                app_id = session.execute(
-                    select(Application.id).where(Application.id == new_report.application_id)).scalar()
-                start_date = new_report.start_date
-                end_date = new_report.end_date
-                campaigns_pairs = []
-                gl_c = session.execute(
-                    select(GlobalCampaign).where(GlobalCampaign.id == new_report.global_campaign_id)).scalar()
-                print(gl_c.groups)
-                import pandas as pd
-                data = [(yd_camp.yd_campaign_id, yd_camp.name, yd_camp.group.name) for campaign_group in gl_c.groups for yd_camp in campaign_group.yd_campaigns]
-                d = pd.DataFrame(data, columns=['campaign_id', 'campaign_name', 'campaign_group'])
-                groups = d.groupby('campaign_group')['campaign_id'].apply(list).to_dict()
-                ids = d['campaign_id']
-                print(ids)
+                app_id = new_report_obj.application.yandex_app_id
+                app_name = new_report_obj.application.name
 
-            except Exception as err:
-                new_report.status_id = 4
-                new_report.error_msg = traceback.format_exc()
+                # ru-формат записи даты
+                date_format = '%d.%m.%Y'
+                start_date: date = new_report_obj.start_date
+                end_date: date = new_report_obj.end_date
+
+                # данные кампаний ЯД для полученой глобальной кампании
+                # список кортежей: (campaign_id, campaign_name, campaign_group), ...
+                campaigns_data = [(yd_camp.yd_campaign_id, yd_camp.name, yd_camp.group.name) for campaign_group in
+                                  new_report_obj.global_campaign.groups for yd_camp in campaign_group.yd_campaigns]
+
+                start_date_ru = start_date.strftime(date_format)
+                end_date_ru = end_date.strftime(date_format)
+                report_name = f'Отчёт по приложению "{app_name}" {start_date_ru} - {end_date_ru}'
+
+                new_report_file: bytes = create_report(
+                    app_id, str(start_date), str(end_date), campaigns_data, report_name)
+
+                logger.info(f'Завершено формирование отчёта от {new_report_obj.created_at}')
+
+                logger.info('Загрузка отчёта в S3-хранилище...')
+                suffix = datetime.today().timestamp()
+                filename = f'Отчёт_приложение_{app_name}_{start_date_ru}_{end_date_ru}_{suffix}.xlsx'
+                filepath = '/'.join((S3_PATH, filename))
+                storage.upload_memory_file(filepath, io.BytesIO(new_report_file), len(new_report_file))
+
+                new_report_obj.status_id = 3
+                new_report_obj.s3_filepath = filepath
+                if new_report_obj.error_msg:
+                    new_report_obj.error_msg = None
                 session.commit()
-        break
+
+                logger.info('Успех.')
+
+            else:
+                session.close()
+                logger.info('Нет новых запросов на создание отчёта, жду 30 секунд...')
+                time.sleep(30)
+
+    except OperationalError as err:
+        logger.error('Ошибка БД, переподключение через 10 секунд')
+        time.sleep(10)
+        session.rollback()
+
+    except Exception as err:
+        logger.info('Произошла ошибка!')
+        new_report_obj.status_id = 4
+        new_report_obj.error_msg = traceback.format_exc()
+        session.commit()
