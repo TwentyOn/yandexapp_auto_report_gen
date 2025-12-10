@@ -24,7 +24,7 @@ class Application(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(TEXT)
-    yandex_app_id = Column(Integer)
+    yandex_app_id = Column(TEXT)
     yd_login = Column(TEXT)
     created_at = Column(DATETIME)
     updated_at = Column(DATETIME)
