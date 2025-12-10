@@ -56,8 +56,7 @@ def fillna_decorator(func):
 
 
 class YandexAppAPI:
-    def __init__(self, yapp_token, app_id=None, date1=None, date2=None, campaign_ids: list = None,
-                 campaign_groups: list = None):
+    def __init__(self, yapp_token, app_id, date1, date2, campaigns_data: list[tuple]):
         self.yapp_token = yapp_token
         self.api_url = 'https://api.appmetrica.yandex.ru/stat/v1/data.csv'
         self.header = {'Authorization': yapp_token}
@@ -69,8 +68,8 @@ class YandexAppAPI:
         self.date1 = datetime.strptime(date1, '%Y-%m-%d').date()
         self.date2 = datetime.strptime(date2, '%Y-%m-%d').date()
 
-        self.campaign_ids = campaign_ids
-        self.campaign_group_ids = campaign_groups
+        self.campaigns_data = pd.DataFrame(campaigns_data, columns=['campaign_id', 'campaign_name', 'campaign_group'])
+        self.campaign_ids = self.campaigns_data['campaign_id'].tolist()
 
     @fillna_decorator
     def get_all_campaigns(self) -> pd.DataFrame:
@@ -102,40 +101,18 @@ class YandexAppAPI:
         logger.info('Запрос количества событий.')
         request_events_count = self._make_request(event_count_metrics, event_count_dimensions, 'ym:ts:urlParameter')
 
+        # базовый датафрейм с ID и именами кампаний
+        base_df = pd.concat([
+            pd.DataFrame({'campaign_id': ['Итого и средние'], 'campaign_name': ['Все']}), self.campaigns_data.drop(columns=['campaign_group'])])
         # общие показатели кликов, установок, конверсии кликов
-        campaigns_ids = ['Итого и средние', '704011362', '704010325', '704011628', '704011482', '704011760',
-                         '704013108', '704010283', '704004623', '704002660',
-                         '704002262', '704002942', '704004722', '704005046', '704001940']
-        base_df = pd.DataFrame({'campaign_id': campaigns_ids})
         general_df = pd.read_csv(io.StringIO(request_general.text))
         general_df.columns = general_labels
         general_df = base_df.merge(general_df, on='campaign_id', how='left')
         general_df.conversion_clicks = general_df.conversion_clicks.apply(lambda x: round(x, 2))
 
-        # имена кампаний из БД
-        campaigns_name_df = pd.DataFrame(
-            {'campaign_id': ['Итого и средние', '704011362', '704010325', '704011628', '704011482', '704011760',
-                             '704013108', '704010283', '704004623', '704002660',
-                             '704002262', '704002942', '704004722', '704005046', '704001940'],
-             'campaign_name': ['Всего', 'Узнай Москву/РСЯ/Экскурсии, гиды/iOS (РФ)',
-                               'Узнай Москву/РСЯ/Парки, усадьбы/iOS',
-                               'Узнай Москву/РСЯ/Музеи по наименованиям/iOS',
-                               'Узнай Москву/РСЯ/Достопримечательности, выставки, музеи/iOS (РФ)',
-                               'Узнай Москву/РСЯ/Достопримечательности в AR/iOS',
-                               'Узнай Москву/РСЯ/Двойники в AR/iOS',
-                               'Узнай Москву/РСЯ/Выходные/iOS,',
-                               'Узнай Москву/Поиск/Экспозиции, выставки, музеи/iOS',
-                               'Узнай Москву/Поиск/Экскурсии/iOS (РФ)',
-                               'Узнай Москву/Поиск/Парки, усадьбы/iOS',
-                               'Узнай Москву/Поиск/Достопримечательности/iOS (РФ)',
-                               'Узнай Москву/Поиск/Достопримечательности в AR/iOS',
-                               'Узнай Москву/Поиск/Двойники в AR/iOS',
-                               'Узнай Москву/Поиск/Выходные/IOS'
-                               ]})
-
         # добавление имён кампаний
-        general_df = general_df.merge(campaigns_name_df, on='campaign_id', how='left')
         general_labels.insert(1, 'campaign_name')
+        # восстановление порядка следования колонок
         general_df = general_df[general_labels]
 
         # датафрейм с общей информацией о событиях
@@ -166,13 +143,6 @@ class YandexAppAPI:
         # Формирование результирующего датафрейма (со всеми параметрами)
         # добавление столбца с количеством новых пользователей
         general_df = general_df.merge(on='campaign_id', how='left', right=log_count_df)
-
-        # добавление столбца с количеством сессий
-        # отсутствующие в ответе API кампании заполняем как кампании с 0-м показателем сессий
-        check = [str(i) for i in self.campaign_ids if str(i) not in sessions_df.campaign_id.values]
-        if check:
-            for campaign_id in check:
-                sessions_df.loc[len(sessions_df)] = [campaign_id, 0, 0, 0]
 
         # общие показатели количества сессий
         sessions_count_df = sessions_df.drop(columns=['session_id', 'timespent']).groupby('campaign_id').sum()
@@ -241,10 +211,8 @@ class YandexAppAPI:
         :return: DataFrame
         """
         # ПОДТЯГИВАТЬ ИЗ БД ИЛИ ПРИНИМАТЬ НА ВХОД (ТОЖЕ ПОДТЯНУТОЕ ИЗ БД)
-        groups_campaigns = {
-            'РСЯ': [704011362, 704010325, 704011628, 704011482, 704011760, 704013108, 704010283],
-            'Поиск': [704004623, 704002660, 704002262, 704002942, 704004722, 704005046, 704001940]
-        }
+        groups_campaigns = self.campaigns_data.drop(columns=['campaign_name'])
+        groups_campaigns = groups_campaigns.groupby('campaign_group')['campaign_id'].apply(list).to_dict()
 
         # campaign_name заменяем на group_name
         columns = list(general_df.columns)
@@ -295,7 +263,7 @@ class YandexAppAPI:
             'sessions_10_30': [result['sessions_10_30'].mean()],
             'sessions_gt_30': [result['sessions_gt_30'].mean()],
         })
-        result = pd.concat([total_row, result])
+        result = pd.concat([total_row, result]).sort_values(by='clicks', ascending=False)
         return result
 
     @fillna_decorator
