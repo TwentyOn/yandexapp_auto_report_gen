@@ -9,7 +9,7 @@ class Report(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_id = Column(Integer)
-    application_id = Column(Integer)
+    application_id = Column(Integer, ForeignKey(f'{scheme_name}.application.id', ondelete='NO ACTION'))
     global_campaign_id = Column(Integer, ForeignKey(f'{scheme_name}.global_campaign.id', ondelete='NO ACTION'))
     start_date = Column(DATE, nullable=False)
     end_date = Column(DATE, nullable=False)
@@ -18,6 +18,9 @@ class Report(Base):
     to_delete = Column(Boolean)
     status_id = Column(Integer)
     error_msg = Column(TEXT)
+
+    global_campaign = relationship('GlobalCampaign', backref='reports', uselist=False)
+    application = relationship('Application', backref='reports', uselist=False)
 
 class Application(Base):
     __tablename__ = 'application'
