@@ -20,7 +20,7 @@ from settings import YAPP_TOKEN
 logging.basicConfig(level=logging.INFO, format='[{asctime}] #{levelname:4} {name}:{lineno} - {message}', style='{')
 logger = logging.getLogger('main.py')
 
-S3_PATH = 'gen_report_yandexapp'
+S3_PATH = 'yandexapp_report_generator'
 
 
 def create_report(app_id, date1, date2, campaigns_data, doc_header: str) -> bytes:
@@ -75,7 +75,7 @@ while True:
             # statement
             stmt = (
                 select(Report)
-                .where(Report.status_id == 1)
+                .where(Report.status_id == 1, Report.to_delete == False)
                 .order_by(Report.created_at.asc())
                 .limit(1)
                 .with_for_update(skip_locked=True)
@@ -90,58 +90,62 @@ while True:
             new_report_obj: Report | None = session.execute(stmt).scalar()
 
             if new_report_obj:
-                logger.info(f'Новый отчёт от {new_report_obj.created_at}')
-                new_report_obj.status_id = 2
-                session.commit()
+                try:
+                    logger.info(f'Новый отчёт от {new_report_obj.created_at}')
+                    new_report_obj.status_id = 2
+                    session.commit()
 
-                app_id = new_report_obj.application.yandex_app_id
-                app_name = new_report_obj.application.name
+                    app_id = new_report_obj.application.yandex_app_id
+                    app_name = new_report_obj.application.name
 
-                # ru-формат записи даты
-                date_format = '%d.%m.%Y'
-                start_date: date = new_report_obj.start_date
-                end_date: date = new_report_obj.end_date
+                    # ru-формат записи даты
+                    date_format = '%d.%m.%Y'
+                    start_date: date = new_report_obj.start_date
+                    end_date: date = new_report_obj.end_date
 
-                # данные кампаний ЯД для полученой глобальной кампании
-                # список кортежей: (campaign_id, campaign_name, campaign_group), ...
-                campaigns_data = [(yd_camp.yd_campaign_id, yd_camp.name, yd_camp.group.name) for campaign_group in
-                                  new_report_obj.global_campaign.groups for yd_camp in campaign_group.yd_campaigns]
+                    # данные кампаний ЯД для полученой глобальной кампании
+                    # список кортежей: (campaign_id, campaign_name, campaign_group), ...
+                    campaigns_data = [(yd_camp.yd_campaign_id, yd_camp.name, yd_camp.group.name) for campaign_group in
+                                      new_report_obj.global_campaign.groups for yd_camp in campaign_group.yd_campaigns]
 
-                start_date_ru = start_date.strftime(date_format)
-                end_date_ru = end_date.strftime(date_format)
-                report_name = f'Отчёт по приложению "{app_name}" {start_date_ru} - {end_date_ru}'
+                    start_date_ru = start_date.strftime(date_format)
+                    end_date_ru = end_date.strftime(date_format)
+                    report_name = f'Отчёт по приложению "{app_name}" {start_date_ru} - {end_date_ru}'
 
-                new_report_file: bytes = create_report(
-                    app_id, str(start_date), str(end_date), campaigns_data, report_name)
+                    new_report_file: bytes = create_report(
+                        app_id, str(start_date), str(end_date), campaigns_data, report_name)
 
-                logger.info(f'Завершено формирование отчёта от {new_report_obj.created_at}')
+                    logger.info(f'Завершено формирование отчёта от {new_report_obj.created_at}')
 
-                logger.info('Загрузка отчёта в S3-хранилище...')
-                suffix = datetime.today().timestamp()
-                filename = f'Отчёт_приложение_{app_name}_{start_date_ru}_{end_date_ru}_{suffix}.xlsx'
-                filepath = '/'.join((S3_PATH, filename))
-                storage.upload_memory_file(filepath, io.BytesIO(new_report_file), len(new_report_file))
+                    logger.info('Загрузка отчёта в S3-хранилище...')
+                    suffix = datetime.today().timestamp()
+                    filename = f'Отчёт_приложение_{app_name}_{start_date_ru}_{end_date_ru}_{suffix}.xlsx'
+                    filepath = '/'.join((S3_PATH, filename))
+                    storage.upload_memory_file(filepath, io.BytesIO(new_report_file), len(new_report_file))
 
-                new_report_obj.status_id = 3
-                new_report_obj.s3_filepath = filepath
-                if new_report_obj.error_msg:
-                    new_report_obj.error_msg = None
-                session.commit()
+                    new_report_obj.status_id = 3
+                    new_report_obj.s3_filepath = filepath
+                    if new_report_obj.error_msg:
+                        new_report_obj.error_msg = None
+                    session.commit()
 
-                logger.info('Успех.')
+                    logger.info('Успех.')
+
+                except Exception as err:
+                    new_report_obj.status_id = 4
+                    new_report_obj.error_msg = traceback.format_exc()
+                    session.commit()
+                    raise err
 
             else:
-                session.close()
                 logger.info('Нет новых запросов на создание отчёта, жду 30 секунд...')
                 time.sleep(30)
 
     except OperationalError as err:
-        logger.error('Ошибка БД, переподключение через 10 секунд')
+        logger.error('Ошибка БД, переподключение через 10 секунд...')
+        session.close()
         time.sleep(10)
-        session.rollback()
 
     except Exception as err:
         logger.info('Произошла ошибка!')
-        new_report_obj.status_id = 4
-        new_report_obj.error_msg = traceback.format_exc()
-        session.commit()
+        time.sleep(30)
