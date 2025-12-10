@@ -139,6 +139,7 @@ while True:
 
             else:
                 logger.info('Нет новых запросов на создание отчёта, жду 30 секунд...')
+                session.close()
                 time.sleep(30)
 
     except OperationalError as err:
