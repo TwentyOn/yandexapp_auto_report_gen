@@ -47,7 +47,6 @@ def create_report(app_id, date1, date2, campaigns_data, doc_header: str) -> byte
         # раскоментировать, если нужно сохрание в файловой системе
         # workbook.filename = 'yapp_report.xlsx'
 
-
         # формирование листов
         xlsx_form = CreateXlsx(workbook, doc_header)
         xlsx_form.write_general(general, sheet_name='Все кампании')
@@ -66,33 +65,6 @@ def create_report(app_id, date1, date2, campaigns_data, doc_header: str) -> byte
         xlsx_file = xlsx_file.getvalue()
     return xlsx_file
 
-
-@contextlib.contextmanager
-def get_new_request(session: Session):
-    # statement
-    stmt = (
-        select(Report)
-        .where(Report.status_id == 1)
-        .options(
-            selectinload(Report.application),
-            selectinload(Report.global_campaign)
-            .selectinload(GlobalCampaign.groups)
-            .selectinload(CampaignGroup.yd_campaigns)
-        )
-    )
-    report = session.execute(stmt)
-    if report:
-        report.status_id = 2
-        session.commit()
-        try:
-            yield new_report_obj
-            report.status_id = 3
-
-        except Exception:
-            report.status_id = 4
-            raise
-    else:
-        yield None
 
 # ДОБАВИТЬ СКРИПТ СТЁПЫ НА ОПРЕДЕЛЕНИЕ URL-ПАРАМЕТРА с campaign_id
 

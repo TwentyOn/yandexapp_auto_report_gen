@@ -1,4 +1,3 @@
-import dotenv
 from sqlalchemy import Column, Integer, TEXT, ForeignKey, DATE, CHAR, DATETIME, Boolean
 from sqlalchemy.orm import relationship
 
