@@ -96,7 +96,7 @@ while True:
                     session.commit()
 
                     app_id = new_report_obj.application.yandex_app_id
-                    app_name = new_report_obj.application.name
+                    app_name: str = new_report_obj.application.name
 
                     # ru-формат записи даты
                     date_format = '%d/%m/%Y'
@@ -119,7 +119,8 @@ while True:
 
                     logger.info('Загрузка отчёта в S3-хранилище...')
                     suffix = int(datetime.today().timestamp())
-                    filename = f'Отчёт_приложение_{app_name}_{start_date_ru}_{end_date_ru}_{suffix}.xlsx'
+                    filename = (f'Отчёт_приложение_{app_name.replace(" ", "_")}_'
+                                f'{start_date_ru}_{end_date_ru}_{suffix}.xlsx')
                     filepath = '/'.join((S3_PATH, filename))
                     storage.upload_memory_file(filepath, io.BytesIO(new_report_file), len(new_report_file))
 
