@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, TEXT, ForeignKey, DATE, CHAR, DATETIME, Boolean
+from sqlalchemy import Column, Integer, TEXT, ForeignKey, DATE, VARCHAR, DATETIME, Boolean
 from sqlalchemy.orm import relationship
 
 from .db import Base, scheme_name
@@ -12,7 +12,7 @@ class Report(Base):
     global_campaign_id = Column(Integer, ForeignKey(f'{scheme_name}.global_campaign.id', ondelete='NO ACTION'))
     start_date = Column(DATE, nullable=False)
     end_date = Column(DATE, nullable=False)
-    s3_filepath = Column(CHAR(1000), nullable=True)
+    s3_filepath = Column(VARCHAR(1000), nullable=True)
     created_at = Column(DATETIME)
     to_delete = Column(Boolean)
     status_id = Column(Integer)
