@@ -95,32 +95,41 @@ while True:
                     new_report_obj.status_id = 2
                     session.commit()
 
+                    # данные приложения Yandex App
                     app_id = new_report_obj.application.yandex_app_id
                     app_name: str = new_report_obj.application.name
 
-                    # ru-формат записи даты
-                    date_format = '%d/%m/%Y'
                     start_date: date = new_report_obj.start_date
                     end_date: date = new_report_obj.end_date
+
+                    # ru-формат записи даты
+                    date_format = '%d-%m-%Y'
+                    start_date_ru = start_date.strftime(date_format)
+                    end_date_ru = end_date.strftime(date_format)
 
                     # данные кампаний ЯД для полученой глобальной кампании
                     # список кортежей: (campaign_id, campaign_name, campaign_group), ...
                     campaigns_data = [(yd_camp.yd_campaign_id, yd_camp.name, yd_camp.group.name) for campaign_group in
                                       new_report_obj.global_campaign.groups for yd_camp in campaign_group.yd_campaigns]
 
-                    start_date_ru = start_date.strftime(date_format)
-                    end_date_ru = end_date.strftime(date_format)
-                    report_name = f'Отчёт по приложению "{app_name}" {start_date_ru} - {end_date_ru}'
+                    # заголовок для отчёта
+                    report_name = (f'Отчёт по приложению "{app_name}" {start_date_ru.replace("-",".")} - '
+                                   f'{end_date_ru.replace("-",".")}')
 
+                    # функция формирования отчёта
                     new_report_file: bytes = create_report(
                         app_id, str(start_date), str(end_date), campaigns_data, report_name)
 
                     logger.info(f'Завершено формирование отчёта от {new_report_obj.created_at}')
 
                     logger.info('Загрузка отчёта в S3-хранилище...')
+
                     suffix = int(datetime.today().timestamp())
+                    # имя файла
                     filename = (f'Отчёт_приложение_{app_name.replace(" ", "_")}_'
                                 f'{start_date_ru}_{end_date_ru}_{suffix}.xlsx')
+
+                    # путь в S3-хранилище
                     filepath = '/'.join((S3_PATH, filename))
                     storage.upload_memory_file(filepath, io.BytesIO(new_report_file), len(new_report_file))
 
