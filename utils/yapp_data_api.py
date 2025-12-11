@@ -394,6 +394,7 @@ class YandexAppAPI:
         """
         parameters = self._get_parameters(metrics, dimensions, filter_label)
 
+        # в случае если передан альтернативный api-адрес
         if url:
             request = requests.get(url, headers=self.header, params=parameters)
             return request
