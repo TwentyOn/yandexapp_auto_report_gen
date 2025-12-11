@@ -99,7 +99,7 @@ while True:
                     app_name = new_report_obj.application.name
 
                     # ru-формат записи даты
-                    date_format = '%d.%m.%Y'
+                    date_format = '%d/%m/%Y'
                     start_date: date = new_report_obj.start_date
                     end_date: date = new_report_obj.end_date
 
@@ -118,7 +118,7 @@ while True:
                     logger.info(f'Завершено формирование отчёта от {new_report_obj.created_at}')
 
                     logger.info('Загрузка отчёта в S3-хранилище...')
-                    suffix = datetime.today().timestamp()
+                    suffix = int(datetime.today().timestamp())
                     filename = f'Отчёт_приложение_{app_name}_{start_date_ru}_{end_date_ru}_{suffix}.xlsx'
                     filepath = '/'.join((S3_PATH, filename))
                     storage.upload_memory_file(filepath, io.BytesIO(new_report_file), len(new_report_file))
