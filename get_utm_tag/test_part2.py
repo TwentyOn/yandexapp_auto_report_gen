@@ -32,7 +32,7 @@ client = Minio(
 )
 
 
-def load_cookies_from_minio(bucket_name=S3_BUCKET_NAME, object_name="cookies_for_campaigns/user_1_cookies.json"):
+def load_cookies_from_minio(bucket_name=S3_BUCKET_NAME, object_name="cookies_for_campaigns/cookies.json"):
     response = client.get_object(bucket_name, object_name)
     data = response.read().decode("utf-8")
     response.close()
@@ -220,5 +220,4 @@ def get_campaign_params(campaign_ids: List[str]) -> Dict[str, Optional[str]]:
 
 
 if __name__ == "__main__":
-    print(get_campaign_params(["703986845", "703723040", "702469969", " 702468674", "702470368", "702496972", "702498562"]))
-    # print(get_campaign_params(["704010325"]))
+    params = get_campaign_params(["703986845", "703723040", "702469969", " 702468674", "702470368", "702496972", "702498562"])
