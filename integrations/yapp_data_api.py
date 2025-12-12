@@ -10,6 +10,8 @@ import dotenv
 import pandas as pd
 import numpy as np
 
+from get_utm_tag.test_part2 import get_campaign_params
+
 dotenv.load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format='[{asctime}] #{levelname:4} {name}:{lineno} - {message}', style='{')
@@ -401,6 +403,16 @@ class YandexAppAPI:
 
         request = requests.get(self.api_url, headers=self.header, params=parameters)
         return request
+
+    def _get_dimensions_campaign_param(self, dimension_tag):
+        result = {}
+        url_params = get_campaign_params(self.campaign_ids)
+
+        for campaign_id in url_params:
+
+            if url_params[campaign_id] == None:
+                url_param = "{'campaign_id'}"
+
 
     def _get_parameters(self, metrics: str, dimensions: str, filter_label: str) -> dict:
         """

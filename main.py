@@ -122,7 +122,7 @@ def initial_report_generation(session: Session, request: Report) -> tuple[bytes,
                       request.global_campaign.groups for yd_camp in campaign_group.yd_campaigns]
 
     # заголовок для листов в отчёте
-    header = (f'Отчёт по приложению "{app_name}" {start_date_ru.replace("-", ".")} - '
+    header = (f'Отчёт по приложению "{app_name}" {start_date_ru.replace("-", ".")}-'
               f'{end_date_ru.replace("-", ".")}')
 
     # инициализация формирования отчёта
