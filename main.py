@@ -198,6 +198,4 @@ while True:
 
     except Exception as err:
         logger.info('Произошла ошибка! Повторная попытка через 30 секунд...')
-        logger.info('Повторная попытка через 30 секунд...')
-        raise err
         time.sleep(30)

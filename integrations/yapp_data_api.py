@@ -105,19 +105,21 @@ class YandexAppAPI:
         logger.info('Запрос основных параметров.')
         # request_general = self._make_request(general_metrics, general_dimensions, 'ym:ts:urlParameter')
         general_df = self.get_data(general_metrics, general_dimensions, 'ym:ts:urlParameter')
+        general_df.columns = general_labels
 
         logger.info('Запрос количества сессий.')
         # request_sessions = self._make_request(session_metrics, session_dimensions, 'ym:ts:urlParameter')
         sessions_df = self.get_data(session_metrics, session_dimensions, 'ym:ts:urlParameter')
+        sessions_df.columns = session_labels
 
         logger.info('Запрос количества событий.')
         # request_events_count = self._make_request(event_count_metrics, event_count_dimensions, 'ym:ts:urlParameter')
-        events_count_df = self.get_data(event_count_metrics, event_count_dimensions, 'ym:ts:urlParameter', group=False)
-
+        events_count_df = self.get_data(event_count_metrics, event_count_dimensions, 'ym:ts:urlParameter')
+        events_count_df.columns = events_count_labels
 
         # общие показатели кликов, установок, конверсии кликов
         # general_df = pd.read_csv(io.StringIO(request_general.text))
-        general_df.columns = general_labels
+        # general_df.columns = general_labels
         general_df = base_df.merge(general_df, on='campaign_id', how='left')
         general_df.conversion_clicks = general_df.conversion_clicks.apply(lambda x: round(x, 2))
 
@@ -128,7 +130,7 @@ class YandexAppAPI:
 
         # датафрейм с общей информацией о событиях
         # events_count_df = pd.read_csv(io.StringIO(request_events_count.text))
-        events_count_df.columns = events_count_labels
+        # events_count_df.columns = events_count_labels
 
         # общее кол-во событий
         total_events_df = events_count_df.copy()
@@ -149,7 +151,7 @@ class YandexAppAPI:
 
         # количество сессии, время сессий
         # sessions_df = pd.read_csv(io.StringIO(request_sessions.text)).fillna(0)
-        sessions_df.columns = session_labels
+        # sessions_df.columns = session_labels
 
         # Формирование результирующего датафрейма (со всеми параметрами)
         # добавление столбца с количеством новых пользователей
@@ -186,10 +188,15 @@ class YandexAppAPI:
         median_sessions_time = median_session_time_df.loc[~summary_median_time_row, 'median_timespent'].median()
         median_session_time_df.loc[summary_median_time_row, 'median_timespent'] = median_sessions_time
         general_df = general_df.merge(on='campaign_id', how='left', right=median_session_time_df)
-        print(sessions_df)
+
         # доля сессий продолжительностью меньше 10 секунд
         sessions_time_less_10_df = sessions_df.drop(columns=['session_id', 'sessions']).groupby('campaign_id').apply(
-            lambda x: (x['timespent'] < 10).mean(), include_groups=False).reset_index(name='sessions_lt_10')
+            lambda x: (x['timespent'] < 10).mean(), include_groups=False)
+        if not sessions_time_less_10_df.empty:
+            sessions_time_less_10_df = sessions_time_less_10_df.reset_index(name='sessions_lt_10')
+        else:
+            sessions_time_less_10_df = sessions_time_less_10_df.rename(
+                columns={'timespent': 'sessions_lt_10'}).reset_index()
         summary_session_time_less_10 = sessions_time_less_10_df['campaign_id'] == 'Итого и средние'
         mean_perc_session_less_10 = sessions_time_less_10_df.loc[~summary_session_time_less_10, 'sessions_lt_10'].mean()
         sessions_time_less_10_df.loc[summary_session_time_less_10, 'sessions_lt_10'] = mean_perc_session_less_10
@@ -197,8 +204,12 @@ class YandexAppAPI:
 
         # доля сессий продолжительностью больше 10 но меньше 30 секунд
         sessions_time_10_30_df = sessions_df.drop(columns=['session_id', 'sessions']).groupby('campaign_id').apply(
-            lambda x: ((x['timespent'] >= 10) & (x['timespent'] <= 30)).mean(), include_groups=False).reset_index(
-            name='sessions_10_30')
+            lambda x: ((x['timespent'] >= 10) & (x['timespent'] <= 30)).mean(), include_groups=False)
+        if not sessions_time_10_30_df.empty:
+            sessions_time_10_30_df = sessions_time_10_30_df.reset_index(name='sessions_10_30')
+        else:
+            sessions_time_10_30_df = sessions_time_10_30_df.rename(
+                columns={'timespent': 'sessions_10_30'}).reset_index()
         summary_session_time_10_30 = sessions_time_10_30_df['campaign_id'] == 'Итого и средние'
         mean_perc_session_10_30 = sessions_time_10_30_df.loc[~summary_session_time_10_30, 'sessions_10_30'].mean()
         sessions_time_10_30_df.loc[summary_session_time_10_30, 'sessions_10_30'] = mean_perc_session_10_30
@@ -206,7 +217,12 @@ class YandexAppAPI:
 
         # доля сессий продолжительностью больше 30
         sessions_time_gt_30_df = sessions_df.drop(columns=['session_id', 'sessions']).groupby('campaign_id').apply(
-            lambda x: (x['timespent'] > 30).mean(), include_groups=False).reset_index(name='sessions_gt_30')
+            lambda x: (x['timespent'] > 30).mean(), include_groups=False)
+        if not sessions_time_gt_30_df.empty:
+            sessions_time_gt_30_df = sessions_time_gt_30_df.reset_index(name='sessions_gt_30')
+        else:
+            sessions_time_gt_30_df = sessions_time_gt_30_df.rename(
+                columns={'timespent': 'sessions_gt_30'}).reset_index()
         summary_session_time_gt_30 = sessions_time_gt_30_df['campaign_id'] == 'Итого и средние'
         mean_perc_session_gt_30 = sessions_time_gt_30_df.loc[~summary_session_time_gt_30, 'sessions_gt_30'].mean()
         sessions_time_gt_30_df.loc[summary_session_time_gt_30, 'sessions_gt_30'] = mean_perc_session_gt_30
@@ -395,8 +411,7 @@ class YandexAppAPI:
         return installs_info_df
 
     @fillna_decorator
-    def get_data(self, metrics: str, dimensions: str, filter_label: str, url: str = None,
-                 group: bool = False) -> pd.DataFrame:
+    def get_data(self, metrics: str, dimensions: str, filter_label: str, url: str = None) -> pd.DataFrame:
         data = pd.DataFrame()
         for url_parameter in self.ids_by_parameter:
             dimensions = dimensions.replace(self.url_param_placeholder, url_parameter)
@@ -405,8 +420,7 @@ class YandexAppAPI:
             print(parameters)
             request = self._make_request(parameters, url)
             data = pd.concat([data, pd.read_csv(io.StringIO(request.text))]).reset_index(drop=True)
-        if group:
-            data = data.groupby(data.columns[0]).sum().reset_index()
+
         return data
 
     @status_decorator
