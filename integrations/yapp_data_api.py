@@ -150,7 +150,6 @@ class YandexAppAPI:
         # количество сессии, время сессий
         # sessions_df = pd.read_csv(io.StringIO(request_sessions.text)).fillna(0)
         sessions_df.columns = session_labels
-        print(sessions_df)
 
         # Формирование результирующего датафрейма (со всеми параметрами)
         # добавление столбца с количеством новых пользователей
@@ -158,7 +157,6 @@ class YandexAppAPI:
 
         # общие показатели количества сессий
         sessions_count_df = sessions_df.drop(columns=['session_id', 'timespent']).groupby('campaign_id').sum()
-        print(sessions_count_df)
         general_df = general_df.merge(on='campaign_id', how='left', right=sessions_count_df)
         general_df['sessions'] = pd.to_numeric(general_df['sessions'], errors='coerce')
         general_df['installs'] = pd.to_numeric(general_df['installs'])
@@ -188,7 +186,7 @@ class YandexAppAPI:
         median_sessions_time = median_session_time_df.loc[~summary_median_time_row, 'median_timespent'].median()
         median_session_time_df.loc[summary_median_time_row, 'median_timespent'] = median_sessions_time
         general_df = general_df.merge(on='campaign_id', how='left', right=median_session_time_df)
-
+        print(sessions_df)
         # доля сессий продолжительностью меньше 10 секунд
         sessions_time_less_10_df = sessions_df.drop(columns=['session_id', 'sessions']).groupby('campaign_id').apply(
             lambda x: (x['timespent'] < 10).mean(), include_groups=False).reset_index(name='sessions_lt_10')
@@ -401,9 +399,7 @@ class YandexAppAPI:
                  group: bool = False) -> pd.DataFrame:
         data = pd.DataFrame()
         for url_parameter in self.ids_by_parameter:
-            print(dimensions)
             dimensions = dimensions.replace(self.url_param_placeholder, url_parameter)
-            print(dimensions)
             parameters = self._get_parameters(
                 self.ids_by_parameter[url_parameter], metrics, dimensions, filter_label, url_parameter)
             print(parameters)

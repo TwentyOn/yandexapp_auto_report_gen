@@ -35,7 +35,7 @@ def create_report(app_id, date1, date2, campaigns_data, doc_header: str) -> byte
     """
     api_req = YandexAppAPI(YAPP_TOKEN, app_id, date1, date2, campaigns_data)
     general = api_req.get_all_campaigns()
-    # general_groups = api_req.get_campaign_groups(general)
+    general_groups = api_req.get_campaign_groups(general)
     # week_distribution = api_req.get_week_distribution()
     # retention = api_req.get_retention_by_weeks()
     # events = api_req.get_events()
@@ -50,7 +50,7 @@ def create_report(app_id, date1, date2, campaigns_data, doc_header: str) -> byte
         # формирование листов
         xlsx_form = CreateXlsx(workbook, doc_header)
         xlsx_form.write_general(general, sheet_name='Все кампании')
-        # xlsx_form.write_general(general_groups, sheet_name='Группы кампаний')
+        xlsx_form.write_general(general_groups, sheet_name='Группы кампаний')
         # xlsx_form.write_week_distribution(week_distribution)
         # xlsx_form.write_retention_by_weeks(retention, general)
         # xlsx_form.write_events(events)
