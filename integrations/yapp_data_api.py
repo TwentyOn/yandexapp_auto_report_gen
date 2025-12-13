@@ -34,7 +34,7 @@ def status_decorator(func):
             logger.info(f'Запрос успешен! ({round(perf_counter() - start_time, 3)} cек)')
         else:
             logger.error('Ошибка запроса!')
-            print(result.url)
+            # print(result.url)
         return result
 
     return wrapper
@@ -72,6 +72,9 @@ class YandexAppAPI:
 
         self.campaigns_data = pd.DataFrame(campaigns_data, columns=['campaign_id', 'campaign_name', 'campaign_group'])
         self.campaign_ids = self.campaigns_data['campaign_id'].tolist()
+        # заполнитель для подстановки параметра содержащего campaign_id
+        self.url_param_placeholder = "{{URL_PARAM}}"
+        self.ids_by_parameter = self._get_campaign_url_param()
 
     @fillna_decorator
     def get_all_campaigns(self) -> pd.DataFrame:
@@ -80,34 +83,40 @@ class YandexAppAPI:
         :return:
         """
         general_metrics = 'ym:ts:userClicks,ym:ts:advInstallDevices,ym:ts:clickToInstallConversion'
-        general_dimensions = "ym:ts:urlParameter{'utm_campaign'}"
+        general_dimensions = f"ym:ts:urlParameter{{'{self.url_param_placeholder}'}}"
 
         session_metrics = 'ym:s:sessions,ym:s:totalSessionDurationPerUser'
-        session_dimensions = "ym:s:profileUrlParameter{'utm_campaign'},ym:s:session"
+        session_dimensions = f"ym:s:profileUrlParameter{{'{self.url_param_placeholder}'}},ym:s:session"
 
         event_count_metrics = 'ym:ce2:allEvents'
-        event_count_dimensions = "ym:ce2:profileUrlParameter{'utm_campaign'},ym:ce2:device,ym:ce2:eventLabel"
+        event_count_dimensions = f"ym:ce2:profileUrlParameter{{'{self.url_param_placeholder}'}},ym:ce2:device,ym:ce2:eventLabel"
 
         general_labels = ['campaign_id', 'clicks', 'installs', 'conversion_clicks']
 
         session_labels = ['campaign_id', 'session_id', 'sessions', 'timespent']
         events_count_labels = ['campaign_id', 'device_id', 'event', 'events_count']
 
-        # запрос данных из API AppMetrica
-        logger.info('Запрос основных параметров.')
-        request_general = self._make_request(general_metrics, general_dimensions, 'ym:ts:urlParameter')
-
-        logger.info('Запрос количества сессий.')
-        request_sessions = self._make_request(session_metrics, session_dimensions, 'ym:ts:urlParameter')
-
-        logger.info('Запрос количества событий.')
-        request_events_count = self._make_request(event_count_metrics, event_count_dimensions, 'ym:ts:urlParameter')
-
         # базовый датафрейм с ID и именами кампаний
         base_df = pd.concat([
-            pd.DataFrame({'campaign_id': ['Итого и средние'], 'campaign_name': ['Все']}), self.campaigns_data.drop(columns=['campaign_group'])])
+            pd.DataFrame({'campaign_id': ['Итого и средние'], 'campaign_name': ['Все']}),
+            self.campaigns_data.drop(columns=['campaign_group'])])
+
+        # запрос данных из API AppMetrica
+        logger.info('Запрос основных параметров.')
+        # request_general = self._make_request(general_metrics, general_dimensions, 'ym:ts:urlParameter')
+        general_df = self.get_data(general_metrics, general_dimensions, 'ym:ts:urlParameter')
+
+        logger.info('Запрос количества сессий.')
+        # request_sessions = self._make_request(session_metrics, session_dimensions, 'ym:ts:urlParameter')
+        sessions_df = self.get_data(session_metrics, session_dimensions, 'ym:ts:urlParameter')
+
+        logger.info('Запрос количества событий.')
+        # request_events_count = self._make_request(event_count_metrics, event_count_dimensions, 'ym:ts:urlParameter')
+        events_count_df = self.get_data(event_count_metrics, event_count_dimensions, 'ym:ts:urlParameter', group=False)
+
+
         # общие показатели кликов, установок, конверсии кликов
-        general_df = pd.read_csv(io.StringIO(request_general.text))
+        # general_df = pd.read_csv(io.StringIO(request_general.text))
         general_df.columns = general_labels
         general_df = base_df.merge(general_df, on='campaign_id', how='left')
         general_df.conversion_clicks = general_df.conversion_clicks.apply(lambda x: round(x, 2))
@@ -118,7 +127,7 @@ class YandexAppAPI:
         general_df = general_df[general_labels]
 
         # датафрейм с общей информацией о событиях
-        events_count_df = pd.read_csv(io.StringIO(request_events_count.text))
+        # events_count_df = pd.read_csv(io.StringIO(request_events_count.text))
         events_count_df.columns = events_count_labels
 
         # общее кол-во событий
@@ -139,8 +148,9 @@ class YandexAppAPI:
         log_count_df.loc[-1] = ['Итого и средние', log_count_df['active_users'].sum()]
 
         # количество сессии, время сессий
-        sessions_df = pd.read_csv(io.StringIO(request_sessions.text)).fillna(0)
+        # sessions_df = pd.read_csv(io.StringIO(request_sessions.text)).fillna(0)
         sessions_df.columns = session_labels
+        print(sessions_df)
 
         # Формирование результирующего датафрейма (со всеми параметрами)
         # добавление столбца с количеством новых пользователей
@@ -148,6 +158,7 @@ class YandexAppAPI:
 
         # общие показатели количества сессий
         sessions_count_df = sessions_df.drop(columns=['session_id', 'timespent']).groupby('campaign_id').sum()
+        print(sessions_count_df)
         general_df = general_df.merge(on='campaign_id', how='left', right=sessions_count_df)
         general_df['sessions'] = pd.to_numeric(general_df['sessions'], errors='coerce')
         general_df['installs'] = pd.to_numeric(general_df['installs'])
@@ -385,8 +396,25 @@ class YandexAppAPI:
 
         return installs_info_df
 
+    @fillna_decorator
+    def get_data(self, metrics: str, dimensions: str, filter_label: str, url: str = None,
+                 group: bool = False) -> pd.DataFrame:
+        data = pd.DataFrame()
+        for url_parameter in self.ids_by_parameter:
+            print(dimensions)
+            dimensions = dimensions.replace(self.url_param_placeholder, url_parameter)
+            print(dimensions)
+            parameters = self._get_parameters(
+                self.ids_by_parameter[url_parameter], metrics, dimensions, filter_label, url_parameter)
+            print(parameters)
+            request = self._make_request(parameters, url)
+            data = pd.concat([data, pd.read_csv(io.StringIO(request.text))]).reset_index(drop=True)
+        if group:
+            data = data.groupby(data.columns[0]).sum().reset_index()
+        return data
+
     @status_decorator
-    def _make_request(self, metrics: str, dimensions: str, filter_label: str, url: str = None) -> requests.Response:
+    def _make_request(self, parameters, url: str | None = None) -> requests.Response:
         """
         Выполнение запроса к App Metrica
         :param metrics:
@@ -394,7 +422,6 @@ class YandexAppAPI:
         :param filter_label:
         :return:
         """
-        parameters = self._get_parameters(metrics, dimensions, filter_label)
 
         # в случае если передан альтернативный api-адрес
         if url:
@@ -404,17 +431,26 @@ class YandexAppAPI:
         request = requests.get(self.api_url, headers=self.header, params=parameters)
         return request
 
-    def _get_dimensions_campaign_param(self, dimension_tag):
-        result = {}
+    def _get_campaign_url_param(self) -> dict:
+        logger.info('Получаю параметры, содержащие campaign_id...')
+        result = []
         url_params = get_campaign_params(self.campaign_ids)
 
         for campaign_id in url_params:
+            if url_params[campaign_id]:
+                param = next(filter(lambda param: '{campaign_id}' in param, url_params[campaign_id].split('&')))
+                result.append((campaign_id, param))
+            else:
+                result.append((campaign_id, 'utm_campaign={campaign_id}'))
 
-            if url_params[campaign_id] == None:
-                url_param = "{'campaign_id'}"
+        result = map(lambda t: (t[0], t[1].split('=')[0]), result)
+        result = pd.DataFrame(result, columns=['campaign_id', 'param'])
+        result = result.groupby('param')['campaign_id'].apply(list).to_dict()
 
+        return result
 
-    def _get_parameters(self, metrics: str, dimensions: str, filter_label: str) -> dict:
+    def _get_parameters(
+            self, campaign_ids: list, metrics: str, dimensions: str, filter_label: str, url_parameter: str) -> dict:
         """
         Извлекает шаблон и заполняет параметры запроса в соответствии с переданными параметрами
         :param metrics: метрики из AppMetrica
@@ -426,8 +462,8 @@ class YandexAppAPI:
             data = json.load(file)
             data = json.dumps(data)
 
-        filters = map(str, self.campaign_ids)
-        filters = map(lambda item: f"{filter_label}{'utm_campaign'}==" + item, filters)
+        filters = map(str, campaign_ids)
+        filters = map(lambda item: f"{filter_label}{{'{url_parameter}'}}==" + item, filters)
         filters = ' OR '.join(filters)
 
         data = data.replace('{{app_id}}', self.app_id)
