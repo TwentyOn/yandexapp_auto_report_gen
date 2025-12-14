@@ -1,5 +1,5 @@
 FROM python:3.11-alpine AS builder
-RUN apk add --no-cache build-base libpq libpq-dev
+RUN apk add --no-cache build-base libpq git
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
