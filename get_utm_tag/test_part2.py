@@ -221,3 +221,4 @@ def get_campaign_params(campaign_ids: List[str]) -> Dict[str, Optional[str]]:
 
 if __name__ == "__main__":
     params = get_campaign_params(["703986845", "703723040", "702469969", " 702468674", "702470368", "702496972", "702498562"])
+    print(params)
