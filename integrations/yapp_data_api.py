@@ -302,21 +302,27 @@ class YandexAppAPI:
         # установки сгруппированные по дате
         install_metrics = 'ym:i:advInstallDevices'
         install_dimensions = 'ym:i:dateTime'
+        install_campaign_filter = 'ym:ts:urlParameter'
 
         # сессии сгруппированные по дате
         sessions_metrics = 'ym:s:sessions'
         sessions_dimensions = 'ym:s:dateTime'
+        sessions_campaign_filter = 'ym:ts:urlParameter'
 
         logger.info('Запрос установок, сгруппированных по дате.')
-        installs_request = self._make_request(install_metrics, install_dimensions, 'ym:ts:urlParameter')
+        # installs_request = self._make_request(install_metrics, install_dimensions, install_campaign_filter)
+        installs_df = self.get_data(install_metrics, install_dimensions, sessions_campaign_filter)
 
         logger.info('Запрос сессий, сгруппированных по дате.')
-        sessions_request = self._make_request(sessions_metrics, sessions_dimensions, 'ym:ts:urlParameter')
+        # sessions_request = self._make_request(sessions_metrics, sessions_dimensions, sessions_campaign_filter)
+        sessions_df = self.get_data(sessions_metrics, sessions_dimensions, sessions_campaign_filter)
 
         try:
             # DataFrame-ы с удаленной строкой итогов (index=0), т.к не требуется при отображении
-            installs_df = pd.read_csv(io.StringIO(installs_request.text)).drop(index=[0]).reset_index(drop=True)
-            sessions_df = pd.read_csv(io.StringIO(sessions_request.text)).drop(index=[0]).reset_index(drop=True)
+            # installs_df = pd.read_csv(io.StringIO(installs_request.text)).drop(index=[0]).reset_index(drop=True)
+            # sessions_df = pd.read_csv(io.StringIO(sessions_request.text)).drop(index=[0]).reset_index(drop=True)
+            installs_df = installs_df.drop(index=[0]).reset_index(drop=True)
+            sessions_df = sessions_df.drop(index=[0]).reset_index(drop=True)
         except KeyError:
             return pd.DataFrame()
 
@@ -342,10 +348,6 @@ class YandexAppAPI:
         Данные по retention за период
         :return:
         """
-        # ДОЛЖЕН ПРИХОДИТЬ СО СКРИПТА СТЁПЫ
-        # параметр, в котором хранится номер кампании в Yandex App Metrica
-        campaign_id_param = 'utm_campaign'
-
         # целое количество недель в периоде
         weeks_num = max(1, int((self.date2 - self.date1).days / 7))
 
@@ -354,16 +356,21 @@ class YandexAppAPI:
 
         # метрика retention
         metric = r'retentionWeek{{week_num}}Percentage'
-        # группировка по кампаниям
-        dimension = fr"urlParameter{{'{campaign_id_param}'}}"
-
         # метрики для запроса
         metrics = f','.join([metric.replace('{{week_num}}', str(_)) for _ in range(1, weeks_num + 1)])
 
-        logger.info(f'Запрашиваю retention-rate за {weeks_num} недель.')
-        retention_request = self._make_request(metrics, dimension, "ym:ts:urlParameter", url=api_url)
+        # группировка по кампаниям
+        dimension = fr"urlParameter{{'{self.url_param_placeholder}'}}"
 
-        retention_df = pd.read_csv(io.StringIO(retention_request.text))
+        filters = 'ym:ts:urlParameter'
+
+
+        logger.info(f'Запрашиваю retention-rate за {weeks_num} недель.')
+        # retention_request = self._make_request(metrics, dimension, "ym:ts:urlParameter", url=api_url)
+        # получение данных по отдельном api-адресу
+        retention_df = self.get_data(metrics, dimension, filters, url=api_url)
+
+        # retention_df = pd.read_csv(io.StringIO(retention_request.text))
         # удаление строки итогов
         try:
             retention_df = retention_df.drop(index=[0]).reset_index(drop=True)
@@ -386,11 +393,13 @@ class YandexAppAPI:
         # ДОБАВИТЬ ФИЛЬТРЫ ПО КАМПАНИЯМ (см. постман)
         metrics = 'ym:ce2:allEvents,ym:ce2:devicesWithEvent,ym:ce2:eventsPerDevice,ym:ce2:devicesPercent'
         dimensions = 'ym:ce2:eventLabel'
+        filters = 'ym:ts:urlParameter'
 
         logger.info('Запрос суммарного количества событий.')
-        response = self._make_request(metrics, dimensions, 'ym:ts:urlParameter')
+        # response = self._make_request(metrics, dimensions, filters)
+        events_df = self.get_data(metrics, dimensions, filters)
 
-        events_df = pd.read_csv(io.StringIO(response.text))
+        # events_df = pd.read_csv(io.StringIO(response.text))
         labels = ['event', 'count_event', 'users', 'event_per_user', 'perc_all_users']
         events_df.columns = labels
 
@@ -400,11 +409,13 @@ class YandexAppAPI:
     def get_installs_info(self):
         metrics = 'ym:i:advInstallDevices'
         dimensions = 'ym:i:regionCity,ym:i:operatingSystem,ym:i:mobileDeviceModel'
+        filters = 'ym:ts:urlParameter'
 
         logger.info('Запрос данных по установкам (регион, ОС, марка).')
-        installs_info_request = self._make_request(metrics, dimensions, 'ym:ts:urlParameter')
+        # installs_info_request = self._make_request(metrics, dimensions, filters)
+        installs_info_df = self.get_data(metrics, dimensions, filters)
 
-        installs_info_df = pd.read_csv(io.StringIO(installs_info_request.text))
+        # installs_info_df = pd.read_csv(io.StringIO(installs_info_request.text))
         installs_info_labels = ['city', 'oc', 'device_type', 'installs']
         installs_info_df.columns = installs_info_labels
 
