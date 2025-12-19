@@ -26,6 +26,13 @@ class CreateXlsx:
         self.percent_format = workbook.add_format({'num_format': '0.00%', 'align': 'center', 'valign': 'vcenter',
                                                    'border': 1})
 
+        self.total_number_format = workbook.add_format({'num_format': '#,##0', 'align': 'center', 'valign': 'vcenter',
+                                                        'border': 2})
+        self.total_float_format = workbook.add_format({'num_format': '0.00', 'align': 'center', 'valign': 'vcenter',
+                                                       'border': 2})
+        self.total_percent_format = workbook.add_format({'num_format': '0.00%', 'align': 'center', 'valign': 'vcenter',
+                                                         'border': 2})
+
     def _write_campaigns_header(self, sheet: Worksheet):
         """
         Метод формирует заголовки для первых двух листов отчёта
@@ -68,17 +75,30 @@ class CreateXlsx:
             item = general_params.iloc[i]
             for col, data in enumerate(item):
                 # определение формата ячейки
-                if col in (0, 1):
-                    cur_format = self.text_format
-                elif col in (2, 3, 5, 6, 8):
-                    cur_format = self.number_format
-                elif col in (4, 12, 13, 14):
-                    cur_format = self.percent_format
+                if row == 2:
+                    if col in (0, 1):
+                        cur_format = self.text_format
+                    elif col in (2, 3, 5, 6, 8):
+                        cur_format = self.total_number_format
+                    elif col in (4, 12, 13, 14):
+                        cur_format = self.total_percent_format
+                    else:
+                        cur_format = self.total_float_format
                 else:
-                    cur_format = self.float_format
+                    if col in (0, 1):
+                        cur_format = self.text_format
+                    elif col in (2, 3, 5, 6, 8):
+                        cur_format = self.number_format
+                    elif col in (4, 12, 13, 14):
+                        cur_format = self.percent_format
+                    else:
+                        cur_format = self.float_format
                 general_sheet.write(row, col, data, cur_format)
 
         # условное форматирование
+        # строка итого и средние
+        general_sheet.conditional_format('C3:O3', {'type': '3_color_scale'})
+        # колонки с данными
         for col in string.ascii_uppercase[2:15]:
             general_sheet.conditional_format(f"{col}4:{col}{len(general_params) + 2}", {'type': '3_color_scale'})
 
@@ -165,7 +185,6 @@ class CreateXlsx:
         retention_df['campaign_id'] = retention_df['campaign_id'].apply(
             lambda campaign_id: names_by_campaignid.get(campaign_id, campaign_id))
 
-
         # количество колонок
         cols_count = len(retention_df.columns)
 
@@ -205,7 +224,7 @@ class CreateXlsx:
             },
         })
 
-        chart.set_size({'width':  1500, 'height': 500})
+        chart.set_size({'width': 1500, 'height': 500})
         chart.set_x_axis({"name": "Недели"})
         chart.set_y_axis({"name": "Retention"})
         for row_ind, col in enumerate(range(len(retention_df)), start=2):
