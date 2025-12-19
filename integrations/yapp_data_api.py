@@ -98,7 +98,7 @@ class YandexAppAPI:
 
         # базовый датафрейм с ID и именами кампаний
         base_df = pd.concat([
-            pd.DataFrame({'campaign_id': ['Итого и средние'], 'campaign_name': ['Все']}),
+            pd.DataFrame({'campaign_id': ['Итого и средние'], 'campaign_name': ['Итого и средние']}),
             self.campaigns_data.drop(columns=['campaign_group'])])
 
         # запрос данных из API AppMetrica
@@ -272,7 +272,7 @@ class YandexAppAPI:
 
         result = pd.concat(dfs)
         total_row = pd.DataFrame({
-            'campaign_id': ['Все'],
+            'campaign_id': ['Итого и средние'],
             'group_name': ['Итого и средние'],
             'clicks': [result['clicks'].sum()],
             'installs': [result['installs'].sum()],
