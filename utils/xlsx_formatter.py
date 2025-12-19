@@ -151,19 +151,34 @@ class CreateXlsx:
         # делаем колонку с кол-вом установок второй по счёту
         labels.insert(1, labels.pop(-1))
         retention_df = retention_df[labels]
+        # добавляем колонку с 0-й неделей
+        retention_df['week0'] = 100
+        labels = retention_df.columns.tolist()
+        # делаем колонку с 0-й неделей 3-й по счёту
+        labels.insert(2, labels.pop(-1))
+        retention_df = retention_df[labels]
+
+        # замена campaign_id на campaign_name
+        # датафрейм с именами кампаний
+        names_by_campaignid = general_df[['campaign_id', 'campaign_name']]
+        names_by_campaignid = names_by_campaignid.set_index('campaign_id')['campaign_name'].to_dict()
+        retention_df['campaign_id'] = retention_df['campaign_id'].apply(
+            lambda campaign_id: names_by_campaignid.get(campaign_id, campaign_id))
+
 
         # количество колонок
         cols_count = len(retention_df.columns)
 
-        retention_sheet.set_column(f'A:{string.ascii_uppercase[cols_count]}', 16)
+        retention_sheet.set_column('A:A', 50)
+        retention_sheet.set_column(f'B:{string.ascii_uppercase[cols_count]}', 16)
         retention_sheet.set_row(0, 60)
 
         # количество недель в датафрейме
         weeks_count = cols_count - 2
 
         # заголовки для листа
-        headers = ['Номер кампании', 'Количество установок']
-        headers.extend([f'Retention {str(i + 1)} недели' for i in range(weeks_count)])
+        headers = ['Наименование кампании', 'Количество установок']
+        headers.extend([f'Retention {str(i)} недели' for i in range(weeks_count)])
 
         # запись заголовка
         for i, header in enumerate(headers):
@@ -176,11 +191,13 @@ class CreateXlsx:
                 if col in range(2, cols_count):
                     # переводим в процентное соотношение, форматируем
                     retention_sheet.write(row, col, data / 100, self.percent_format)
+                elif col == 0:
+                    retention_sheet.write(row, col, data, self.text_format)
                 else:
                     retention_sheet.write(row, col, data, self.number_format)
 
         # добавление графика
-        chart = self.workbook.add_chart({"type": "scatter", "subtype": "smooth_with_markers"})
+        chart = self.workbook.add_chart({"type": "line"})
         chart.set_title({
             'name': 'Распределение retention-rate по кампаниям',
             'name_font': {
@@ -188,7 +205,7 @@ class CreateXlsx:
             },
         })
 
-        chart.set_size({'width': 1365, 'height': 500})
+        chart.set_size({'width':  1500, 'height': 500})
         chart.set_x_axis({"name": "Недели"})
         chart.set_y_axis({"name": "Retention"})
         for row_ind, col in enumerate(range(len(retention_df)), start=2):
@@ -199,7 +216,7 @@ class CreateXlsx:
                 'marker': {'type': 'circle'},
             })
 
-        retention_sheet.insert_chart(f"B{len(retention_df) + 4}", chart)
+        retention_sheet.insert_chart(f"B{len(retention_df) + 4}", chart, {'x_offset': -270})
 
         logger.info('Успех.')
 
