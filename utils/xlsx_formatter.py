@@ -233,6 +233,7 @@ class CreateXlsx:
                 'categories': f"='Retention-анализ'!$C$1:${string.ascii_uppercase[cols_count - 1]}1",
                 'values': f"='Retention-анализ'!$C${row_ind}:${string.ascii_uppercase[cols_count - 1]}${row_ind}",
                 'marker': {'type': 'circle'},
+                'line': {'width': 1.25}
             })
 
         retention_sheet.insert_chart(f"B{len(retention_df) + 4}", chart, {'x_offset': -270})
