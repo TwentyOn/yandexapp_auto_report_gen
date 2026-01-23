@@ -1,4 +1,6 @@
 FROM python:3.11-alpine AS builder
+
+# зависимости для установки psycopg2
 RUN apk add --no-cache build-base libpq libpq-dev
 
 COPY requirements.txt .
