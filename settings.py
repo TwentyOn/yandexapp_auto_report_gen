@@ -7,7 +7,10 @@ dotenv.load_dotenv()
 # Файл содержит настройки или перменные среды для использования в проекте
 
 # Yandex App API
-YAPP_TOKEN = os.getenv('yapp_token')
+YAPP_TOKEN = os.getenv('YAPP_TOKEN')
+
+# Yandex direct API
+YANDEX_DIRECT_TOKEN = os.getenv('YANDEX_DIRECT_TOKEN')
 
 # База данных
 DB_USER = os.getenv('DB_USER')

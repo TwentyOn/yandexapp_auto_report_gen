@@ -23,17 +23,18 @@ logger = logging.getLogger('main.py')
 S3_PATH = 'yandexapp_report_generator'
 
 
-def create_report(app_id, date1, date2, campaigns_data, doc_header: str) -> bytes:
+def create_report(app_id, date1, date2, campaigns_data, yd_login: str, doc_header: str) -> bytes:
     """
     Функция для управления созданием отчёта
     :param app_id:
     :param date1:
     :param date2:
     :param campaigns_data:
+    :param yd_login:
     :param doc_header:
     :return:
     """
-    api_req = YandexAppAPI(YAPP_TOKEN, app_id, date1, date2, campaigns_data)
+    api_req = YandexAppAPI(YAPP_TOKEN, app_id, date1, date2, campaigns_data, yd_login)
     general = api_req.get_all_campaigns()
     general_groups = api_req.get_campaign_groups(general)
     week_distribution = api_req.get_week_distribution()
@@ -107,6 +108,7 @@ def initial_report_generation(session: Session, request: Report) -> tuple[bytes,
     # данные приложения Yandex App
     app_id = request.application.yandex_app_id
     app_name: str = request.application.name
+    yd_login: str = request.application.yd_login
 
     start_date: date = request.start_date
     end_date: date = request.end_date
@@ -127,7 +129,7 @@ def initial_report_generation(session: Session, request: Report) -> tuple[bytes,
 
     # инициализация формирования отчёта
     new_report_file: bytes = create_report(
-        app_id, str(start_date), str(end_date), campaigns_data, header)
+        app_id, str(start_date), str(end_date), campaigns_data, yd_login, header)
 
     logger.info('Обработка завершена.')
 
@@ -197,6 +199,6 @@ while True:
         time.sleep(10)
 
     except Exception as err:
-        print(err)
+        traceback.print_exc()
         logger.info('Произошла ошибка! Повторная попытка через 30 секунд...')
         time.sleep(30)

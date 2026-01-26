@@ -58,7 +58,7 @@ def fillna_decorator(func):
 
 
 class YandexAppAPI:
-    def __init__(self, yapp_token, app_id, date1, date2, campaigns_data: list[tuple]):
+    def __init__(self, yapp_token, app_id, date1, date2, campaigns_data: list[tuple], yd_login: str):
         self.yapp_token = yapp_token
         self.api_url = 'https://api.appmetrica.yandex.ru/stat/v1/data.csv'
         self.header = {'Authorization': yapp_token}
@@ -74,7 +74,7 @@ class YandexAppAPI:
         self.campaign_ids = self.campaigns_data['campaign_id'].tolist()
         # заполнитель для подстановки параметра содержащего campaign_id
         self.url_param_placeholder = "{{URL_PARAM}}"
-        self.ids_by_parameter = self._get_campaign_url_param()
+        self.ids_by_parameter = self._get_campaign_url_param(yd_login)
 
     @fillna_decorator
     def get_all_campaigns(self) -> pd.DataFrame:
@@ -452,10 +452,10 @@ class YandexAppAPI:
         request = requests.get(self.api_url, headers=self.header, params=parameters)
         return request
 
-    def _get_campaign_url_param(self) -> dict:
+    def _get_campaign_url_param(self, yd_login) -> dict:
         logger.info('Получаю параметры, содержащие campaign_id...')
         result = []
-        url_params = get_campaign_params(self.campaign_ids)
+        url_params = get_campaign_params(self.campaign_ids, yd_login)
 
         for campaign_id in url_params:
             if url_params[campaign_id]:

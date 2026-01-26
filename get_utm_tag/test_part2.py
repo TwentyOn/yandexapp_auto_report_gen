@@ -7,22 +7,19 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 from minio import Minio
-from dotenv import load_dotenv
+
+from settings import ENDPOINT_URL, ACCESS_KEY, SECRET_KEY, BUCKET_NAME, YANDEX_DIRECT_TOKEN
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 YANDEX_DIRECT_BASE_URL = "https://api.direct.yandex.com/json/v5"
-DIRECT_CLIENT_LOGIN = "e-20035215"
-YANDEX_DIRECT_TOKEN = "y0__xCq2Pr8BRjgmDog6tL1rRRmflVziW5xUSrpp1A3rjxJmZ2haQ"
 YANDEX_WEBAPI_URL = "https://direct.yandex.ru/wizard/web-api/aggregate"
 
-load_dotenv()
-
-S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL")
-S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
-S3_SECRET_KEY = os.getenv("S3_SECRET_KEY")
-S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
+S3_ENDPOINT_URL = ENDPOINT_URL
+S3_ACCESS_KEY = ACCESS_KEY
+S3_SECRET_KEY = SECRET_KEY
+S3_BUCKET_NAME = BUCKET_NAME
 
 client = Minio(
     endpoint=S3_ENDPOINT_URL,
@@ -99,11 +96,11 @@ def collect_campaigns_with_tracking(data) -> Dict[str, str]:
     return found
 
 
-def direct_api_get_tracking_params(campaign_ids: List[str]) -> Dict[str, str]:
+def direct_api_get_tracking_params(campaign_ids: List[str], yd_login) -> Dict[str, str]:
     token = _ensure_bearer(YANDEX_DIRECT_TOKEN)
     headers = {
         "Authorization": token,
-        "Client-Login": DIRECT_CLIENT_LOGIN,
+        "Client-Login": yd_login,
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
@@ -140,11 +137,11 @@ def get_tracking_params_web(campaign_id: str, cookies, headers):
     return recursive_find_tracking(data)
 
 
-def get_tracking_from_banner(campaign_id: str) -> Optional[str]:
+def get_tracking_from_banner(campaign_id: str, yd_login) -> Optional[str]:
     token = _ensure_bearer(YANDEX_DIRECT_TOKEN)
     headers = {
         "Authorization": token,
-        "Client-Login": DIRECT_CLIENT_LOGIN,
+        "Client-Login": yd_login,
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
@@ -195,15 +192,16 @@ def cleanup_temp_json_files():
         logger.info("Временные JSON-файлы отсутствуют — нечего удалять.")
 
 
-def get_campaign_params(campaign_ids: List[str]) -> Dict[str, Optional[str]]:
+def get_campaign_params(campaign_ids: List[str], yd_login: str) -> Dict[str, Optional[str]]:
     cur_dir_path = os.path.dirname(__file__)
     cookies = load_cookies_from_minio()
     headers = json.load(open(os.path.join(cur_dir_path, "headers.json"), encoding="utf-8"))
+    headers['referer'] = headers['referer'].replace('{{YD_LOGIN}}', yd_login)
     headers = update_headers_with_csrf(headers, cookies)
 
     result = {}
 
-    api_data = direct_api_get_tracking_params(campaign_ids)
+    api_data = direct_api_get_tracking_params(campaign_ids, yd_login)
     result.update(api_data)
 
     for cid in campaign_ids:
@@ -212,7 +210,7 @@ def get_campaign_params(campaign_ids: List[str]) -> Dict[str, Optional[str]]:
 
     for cid in campaign_ids:
         if not result.get(cid):
-            result[cid] = get_tracking_from_banner(cid)
+            result[cid] = get_tracking_from_banner(cid, yd_login)
 
     cleanup_temp_json_files()
 
@@ -220,5 +218,6 @@ def get_campaign_params(campaign_ids: List[str]) -> Dict[str, Optional[str]]:
 
 
 if __name__ == "__main__":
-    params = get_campaign_params(["703986845", "703723040", "702469969", " 702468674", "702470368", "702496972", "702498562"])
+    params = get_campaign_params(
+        ["703986845", "703723040", "702469969", " 702468674", "702470368", "702496972", "702498562"])
     print(params)
